@@ -1,0 +1,7 @@
+warp
+src/*.o
+*.warp
+/build
+/dist
+/tmp
+/.cache
