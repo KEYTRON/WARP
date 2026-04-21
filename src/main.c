@@ -31,6 +31,7 @@ static void print_help(void) {
         "    info     <pkg>    Show package details\n"
         "    update            Refresh package index\n"
         "    keygen            Generate Ed25519 signing keypair\n"
+        "    sign     <file>   Sign a file with an Ed25519 key\n"
         "    pack     <dir>    Create .warp from a directory\n\n"
         "  " WARP_BOLD "Examples:" WARP_RESET "\n"
         "    warp search editor\n"
@@ -57,6 +58,7 @@ static const cmd_t commands[] = {
     { "info",     cmd_info     },
     { "update",   cmd_update   },
     { "keygen",   cmd_keygen   },
+    { "sign",     cmd_sign     },
     { "pack",     cmd_pack     },
     { NULL, NULL }
 };

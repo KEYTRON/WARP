@@ -9,6 +9,7 @@
 #define WARP_STORE_DIR   "/var/lib/warp"
 #define WARP_INDEX_URL   "https://github.com/KEYTRON/WARP/releases/download/packages-v1/index.json"
 #define WARP_ARCH        "x86_64"
+#define WARP_MAX_VARIANTS 8
 
 /* ── compile-time flags ──────────────────────────────────────── */
 /* Define WARP_SKIP_SIG_VERIFY to skip Ed25519 signature checks (dev) */
@@ -47,6 +48,15 @@ typedef struct {
     int    bins_count;
 } warp_manifest_t;
 
+typedef struct {
+    char   kind[32];
+    char   url[WARP_MAX_URL];
+    char   sha256[WARP_SHA256_HEX];
+    char   signature[128];
+    size_t size;
+    int    priority;
+} warp_release_variant_t;
+
 /* ── index entry ─────────────────────────────────────────────── */
 typedef struct {
     char   name[WARP_MAX_NAME];
@@ -55,6 +65,9 @@ typedef struct {
     char   sha256[WARP_SHA256_HEX];
     char   url[WARP_MAX_URL];
     size_t size;
+    char   signature[128];
+    warp_release_variant_t variants[WARP_MAX_VARIANTS];
+    int    variants_count;
 } warp_pkg_entry_t;
 
 typedef struct {
@@ -78,10 +91,15 @@ int  warp_sha256_file(const char *path, char out_hex[WARP_SHA256_HEX]);
 int  warp_sha256_buf(const uint8_t *buf, size_t len, char out_hex[WARP_SHA256_HEX]);
 int  warp_keygen(const char *privkey_path, const char *pubkey_path);
 int  warp_verify_index_sig(const char *index_json, const char *sig_b64);
+int  warp_sign_buf(const uint8_t *msg, size_t msg_len, const uint8_t *privkey, size_t privkey_len,
+                   uint8_t sig[64]);
+int  warp_sign_file(const char *path, const char *privkey_hex_path, char out_b64[128]);
 int  warp_ed25519_verify(const uint8_t *msg, size_t msg_len,
                           const uint8_t sig[64],
                           const uint8_t pubkey[32]);
 int  warp_base64_decode(const char *in, uint8_t *out, size_t *out_len);
+int  warp_base64_encode(const uint8_t *in, size_t in_len, char *out, size_t out_cap);
+int  warp_hex_decode(const char *in, uint8_t *out, size_t out_cap, size_t *out_len);
 
 /* ── json.h (inline) ─────────────────────────────────────────── */
 typedef enum { JSON_NULL, JSON_BOOL, JSON_NUMBER, JSON_STRING,
@@ -114,6 +132,7 @@ typedef struct {
 } warp_dl_opts_t;
 
 int warp_download(const char *url, const char *dest_path, warp_dl_opts_t *opts);
+int warp_download_variant(const warp_release_variant_t *variant, const char *dest_path, warp_dl_opts_t *opts);
 
 /* ── store.h (inline) ────────────────────────────────────────── */
 int  store_init(void);
@@ -131,6 +150,8 @@ int  index_search(const warp_index_t *idx, const char *query,
                   warp_pkg_entry_t **results, int *count);
 int  index_find(const warp_index_t *idx, const char *name,
                 warp_pkg_entry_t *out);
+int  index_pick_variant(const warp_pkg_entry_t *entry, const char **reason,
+                        warp_release_variant_t *out);
 void index_free(warp_index_t *idx);
 
 /* ── commands ────────────────────────────────────────────────── */
@@ -143,6 +164,7 @@ int cmd_info    (int argc, char **argv);
 int cmd_update  (int argc, char **argv);
 int cmd_keygen  (int argc, char **argv);
 int cmd_pack    (int argc, char **argv);
+int cmd_sign    (int argc, char **argv);
 
 /* ── utils ───────────────────────────────────────────────────── */
 #define WARP_RED    "\033[0;31m"

@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <libgen.h>
 #include <curl/curl.h>
 #include <openssl/evp.h>
 #include "warp.h"
@@ -140,4 +142,66 @@ char *warp_download_str(const char *url) {
         return NULL;
     }
     return sb.buf;
+}
+
+static int command_exists(const char *name) {
+    char cmd[256];
+    snprintf(cmd, sizeof(cmd), "command -v %s >/dev/null 2>&1", name);
+    return system(cmd) == 0;
+}
+
+static int download_via_aria2c(const char *uri, const char *dest_path, const char *torrent_path) {
+    if (!command_exists("aria2c")) return WARP_ERR_NET;
+
+    char dest_copy[512];
+    char dir_copy[512];
+    snprintf(dest_copy, sizeof(dest_copy), "%s", dest_path);
+    snprintf(dir_copy, sizeof(dir_copy), "%s", dest_path);
+
+    char *base = basename(dest_copy);
+    char *dir = dirname(dir_copy);
+
+    char cmd[2048];
+    if (torrent_path) {
+        snprintf(cmd, sizeof(cmd),
+                 "aria2c --allow-overwrite=true --seed-time=0 --console-log-level=warn "
+                 "--dir '%s' --out '%s' -T '%s'",
+                 dir, base, torrent_path);
+    } else {
+        snprintf(cmd, sizeof(cmd),
+                 "aria2c --allow-overwrite=true --seed-time=0 --console-log-level=warn "
+                 "--dir '%s' --out '%s' '%s'",
+                 dir, base, uri);
+    }
+    return system(cmd) == 0 ? WARP_OK : WARP_ERR_NET;
+}
+
+int warp_download_variant(const warp_release_variant_t *variant, const char *dest_path, warp_dl_opts_t *opts) {
+    if (!variant || !variant->url[0]) return WARP_ERR_INVAL;
+
+    if (variant->kind[0] == '\0' ||
+        strcmp(variant->kind, "direct") == 0 ||
+        strcmp(variant->kind, "http") == 0 ||
+        strcmp(variant->kind, "https") == 0 ||
+        strcmp(variant->kind, "file") == 0) {
+        return warp_download(variant->url, dest_path, opts);
+    }
+
+    if (strcmp(variant->kind, "magnet") == 0 || strcmp(variant->kind, "p2p") == 0) {
+        return download_via_aria2c(variant->url, dest_path, NULL);
+    }
+
+    if (strcmp(variant->kind, "torrent") == 0) {
+        char torrent_tmp[512];
+        snprintf(torrent_tmp, sizeof(torrent_tmp), "/tmp/warp-%ld.torrent", (long)getpid());
+        warp_dl_opts_t tmp_opts = { .show_progress = 0 };
+        if (warp_download(variant->url, torrent_tmp, &tmp_opts) != WARP_OK) {
+            return WARP_ERR_NET;
+        }
+        int rc = download_via_aria2c(variant->url, dest_path, torrent_tmp);
+        unlink(torrent_tmp);
+        return rc;
+    }
+
+    return WARP_ERR_INVAL;
 }

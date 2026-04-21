@@ -12,6 +12,29 @@
 extern char *warp_download_str(const char *url);
 extern int   warp_verify_index_sig(const char *json, const char *sig_b64);
 
+static int kind_rank(const char *kind) {
+    if (!kind || !*kind) return 50;
+    if (strcmp(kind, "torrent") == 0) return 0;
+    if (strcmp(kind, "p2p") == 0) return 5;
+    if (strcmp(kind, "magnet") == 0) return 10;
+    if (strcmp(kind, "direct") == 0) return 20;
+    if (strcmp(kind, "https") == 0) return 25;
+    if (strcmp(kind, "http") == 0) return 30;
+    if (strcmp(kind, "file") == 0) return 35;
+    return 40;
+}
+
+static void parse_variant(json_t *node, warp_release_variant_t *out) {
+    memset(out, 0, sizeof(*out));
+    if (!node || node->type != JSON_OBJECT) return;
+    strncpy(out->kind, json_str(node, "kind", "direct"), sizeof(out->kind) - 1);
+    strncpy(out->url, json_str(node, "url", ""), sizeof(out->url) - 1);
+    strncpy(out->sha256, json_str(node, "sha256", ""), sizeof(out->sha256) - 1);
+    strncpy(out->signature, json_str(node, "signature", ""), sizeof(out->signature) - 1);
+    out->size = (size_t)json_num(node, "size", 0);
+    out->priority = (int)json_num(node, "priority", 0);
+}
+
 static int index_is_stale(void) {
     struct stat st;
     if (stat(INDEX_CACHE, &st) != 0) return 1;
@@ -86,6 +109,15 @@ static int index_parse(const char *json_src, warp_index_t *idx) {
         strncpy(e->sha256,      json_str(pkg, "sha256",      ""),  WARP_SHA256_HEX-1);
         strncpy(e->url,         json_str(pkg, "url",         ""),  WARP_MAX_URL-1);
         e->size = (size_t)json_num(pkg, "size", 0);
+        strncpy(e->signature,   json_str(pkg, "signature", ""),  sizeof(e->signature)-1);
+
+        json_t *variants = json_get(pkg, "variants");
+        if (!variants) variants = json_get(pkg, "mirrors");
+        if (variants && variants->type == JSON_ARRAY) {
+            for (int j = 0; j < variants->v.arr.count && e->variants_count < WARP_MAX_VARIANTS; j++) {
+                parse_variant(variants->v.arr.items[j], &e->variants[e->variants_count++]);
+            }
+        }
     }
 
     json_free(root);
@@ -132,6 +164,58 @@ int index_search(const warp_index_t *idx, const char *query,
             (*results)[(*count)++] = *e;
         }
     }
+    return WARP_OK;
+}
+
+int index_pick_variant(const warp_pkg_entry_t *entry, const char **reason,
+                       warp_release_variant_t *out) {
+    if (!entry || !out) return WARP_ERR_INVAL;
+
+    warp_release_variant_t best;
+    memset(&best, 0, sizeof(best));
+    best.priority = -1;
+
+    const char *preferred = getenv("WARP_PREFERRED_VARIANTS");
+    if (!preferred || !*preferred) preferred = "torrent,p2p,magnet,direct,https,http,file";
+
+    char order_buf[256];
+    snprintf(order_buf, sizeof(order_buf), "%s", preferred);
+
+    int best_rank = 999;
+    int best_prio = -999999;
+
+    char *saveptr = NULL;
+    for (char *tok = strtok_r(order_buf, ",", &saveptr); tok; tok = strtok_r(NULL, ",", &saveptr)) {
+        for (int i = 0; i < entry->variants_count; i++) {
+            const warp_release_variant_t *v = &entry->variants[i];
+            if (*v->kind && strcmp(v->kind, tok) != 0) continue;
+            int rank = kind_rank(v->kind);
+            if (rank < best_rank || (rank == best_rank && v->priority > best_prio)) {
+                best = *v;
+                best_rank = rank;
+                best_prio = v->priority;
+            }
+        }
+    }
+
+    if (best_rank == 999) {
+        if (entry->url[0]) {
+            strncpy(best.kind, "direct", sizeof(best.kind) - 1);
+            strncpy(best.url, entry->url, sizeof(best.url) - 1);
+            strncpy(best.sha256, entry->sha256, sizeof(best.sha256) - 1);
+            strncpy(best.signature, entry->signature, sizeof(best.signature) - 1);
+            best.size = entry->size;
+            best.priority = 0;
+            best_rank = kind_rank(best.kind);
+            if (reason) *reason = "legacy fields";
+        } else {
+            return WARP_ERR_NOENT;
+        }
+    } else if (reason) {
+        *reason = "selected";
+    }
+
+    *out = best;
     return WARP_OK;
 }
 

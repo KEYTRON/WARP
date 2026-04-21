@@ -36,29 +36,38 @@ int cmd_install(int argc, char **argv) {
     }
     index_free(&idx);
 
+    warp_release_variant_t variant;
+    const char *variant_reason = NULL;
+    if (index_pick_variant(&entry, &variant_reason, &variant) != WARP_OK) {
+        warp_err("No usable download variant for: %s", name);
+        return 1;
+    }
+
     printf("\n  " WARP_BOLD "%s" WARP_RESET " %s\n", entry.name, entry.version);
     if (entry.description[0])
         printf("  %s\n", entry.description);
     if (entry.size > 0)
         printf("  Size: %.1f KB\n\n", (double)entry.size / 1024.0);
+    printf("  Source: %s (%s)\n\n", variant.kind, variant_reason ? variant_reason : "selected");
 
     /* Download to temp file */
     char tmp_path[512];
     snprintf(tmp_path, sizeof(tmp_path), "/tmp/warp-%s.warp", name);
 
-    warp_info("Downloading %s ...", entry.url);
+    warp_info("Downloading %s from %s ...", name, variant.url);
     warp_dl_opts_t dl = { .show_progress = 1 };
-    if (warp_download(entry.url, tmp_path, &dl) != WARP_OK) {
+    if (warp_download_variant(&variant, tmp_path, &dl) != WARP_OK) {
         warp_err("Download failed");
         return 1;
     }
 
     /* Verify SHA256 */
     warp_info("Verifying integrity...");
-    if (entry.sha256[0]) {
-        if (strcmp(dl.computed_sha256, entry.sha256) != 0) {
+    const char *expected_sha = variant.sha256[0] ? variant.sha256 : entry.sha256;
+    if (expected_sha[0]) {
+        if (strcmp(dl.computed_sha256, expected_sha) != 0) {
             warp_err("SHA256 mismatch!");
-            warp_err("  Expected: %s", entry.sha256);
+            warp_err("  Expected: %s", expected_sha);
             warp_err("  Got:      %s", dl.computed_sha256);
             remove(tmp_path);
             return 1;
@@ -243,6 +252,13 @@ int cmd_info(int argc, char **argv) {
             printf("  Size:       %.1f KB\n", (double)entry.size / 1024.0);
             printf("  SHA256:     %.16s...\n", entry.sha256);
             printf("  URL:        %s\n\n", entry.url);
+            if (entry.variants_count > 0) {
+                printf("  Variants:   %d\n", entry.variants_count);
+                for (int i = 0; i < entry.variants_count; i++) {
+                    printf("    - %s: %s\n", entry.variants[i].kind, entry.variants[i].url);
+                }
+                printf("\n");
+            }
         } else if (!installed) {
             warp_err("Package not found: %s", name);
         }
@@ -278,6 +294,39 @@ int cmd_keygen(int argc, char **argv) {
     warp_ok("Public key:  %s", pub);
     printf("\n  " WARP_YELLOW "Keep the private key secure!" WARP_RESET "\n");
     printf("  Paste the C array above into packages/warp/src/crypto.c\n\n");
+    return 0;
+}
+
+/* ── warp sign <file> [privkey] ──────────────────────────────── */
+int cmd_sign(int argc, char **argv) {
+    if (argc < 1) { warp_err("Usage: warp sign <file> [privkey_hex]"); return 1; }
+    const char *path = argv[0];
+    const char *priv = argc > 1 ? argv[1] : "/root/.warp-privkey.hex";
+
+    if (!path_exists(path)) {
+        warp_err("File not found: %s", path);
+        return 1;
+    }
+
+    char sig[128];
+    if (warp_sign_file(path, priv, sig) != WARP_OK) {
+        warp_err("Signing failed");
+        return 1;
+    }
+
+    char sig_path[768];
+    snprintf(sig_path, sizeof(sig_path), "%s.sig", path);
+    FILE *f = fopen(sig_path, "w");
+    if (!f) {
+        warp_err("Cannot write signature file: %s", sig_path);
+        return 1;
+    }
+    fprintf(f, "%s\n", sig);
+    fclose(f);
+
+    warp_ok("Signed: %s", path);
+    printf("  Signature file: %s\n", sig_path);
+    printf("  Signature:      %s\n\n", sig);
     return 0;
 }
 
