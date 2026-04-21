@@ -7,6 +7,7 @@
 #include "warp.h"
 
 #define INDEX_CACHE  WARP_STORE_DIR "/index.json"
+#define INDEX_SIG_CACHE  WARP_STORE_DIR "/index.sig"
 #define INDEX_MAX_AGE 3600   /* refresh if older than 1 hour */
 
 extern char *warp_download_str(const char *url);
@@ -58,6 +59,18 @@ static int index_fetch_and_cache(void) {
     fwrite(data, 1, strlen(data), f);
     fclose(f);
     free(data);
+
+    char sig_url[1024];
+    snprintf(sig_url, sizeof(sig_url), "%s.sig", WARP_INDEX_URL);
+    char *sig = warp_download_str(sig_url);
+    if (sig) {
+        FILE *sf = fopen(INDEX_SIG_CACHE, "w");
+        if (sf) {
+            fwrite(sig, 1, strlen(sig), sf);
+            fclose(sf);
+        }
+        free(sig);
+    }
     return WARP_OK;
 }
 
@@ -70,11 +83,16 @@ static int index_parse(const char *json_src, warp_index_t *idx) {
 
     /* Verify signature before parsing content */
     const char *sig = json_str(root, "signature", NULL);
-    if (sig) {
-        /* Remove signature field from json for verification would require
-         * re-serialisation — for v0 we verify the whole JSON string */
+    char *sig_cache = NULL;
+    if (!sig) {
+        size_t sig_len = 0;
+        sig_cache = read_file(INDEX_SIG_CACHE, &sig_len);
+        sig = sig_cache;
+    }
+    if (sig && *sig) {
         if (warp_verify_index_sig(json_src, sig) != WARP_OK) {
             warp_err("Index signature verification failed!");
+            free(sig_cache);
             json_free(root);
             return WARP_ERR_SIG;
         }
@@ -121,6 +139,7 @@ static int index_parse(const char *json_src, warp_index_t *idx) {
     }
 
     json_free(root);
+    free(sig_cache);
     return WARP_OK;
 }
 

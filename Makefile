@@ -1,5 +1,5 @@
 CC      = gcc
-CFLAGS  = -O2 -Wall -std=c11 -D_GNU_SOURCE -DWARP_SKIP_SIG_VERIFY -Wno-unused-const-variable
+CFLAGS  = -O2 -Wall -std=c11 -D_GNU_SOURCE -Wno-unused-const-variable
 LDFLAGS = -lcurl -lssl -lcrypto
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin

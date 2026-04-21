@@ -43,7 +43,7 @@ By default the binary is installed to `/usr/local/bin/warp`. Set `PREFIX` if you
 - `warp rollback <package>`
 - `warp info <package>`
 - `warp update`
-- `warp keygen`
+- `warp keygen [privkey_hex pubkey_hex]`
 - `warp sign <file>`
 - `warp pack <directory>`
 
@@ -70,3 +70,10 @@ If no `variants` array exists, WARP falls back to the legacy top-level `url` and
 ### Signing
 
 Use `warp sign <file> [privkey_hex]` to create a `<file>.sig` sidecar with a base64 Ed25519 signature. The same keypair from `warp keygen` can be used to sign release metadata such as `index.json`.
+
+Use `warp keygen [privkey_hex pubkey_hex]` to write the signing keypair to custom paths when you do not want to store release keys under `/root`.
+
+For release indexes, the signed file and signature live side by side:
+
+- `index.json`
+- `index.sig`

@@ -30,7 +30,7 @@ static void print_help(void) {
         "    rollback <pkg>    Revert to previous version\n"
         "    info     <pkg>    Show package details\n"
         "    update            Refresh package index\n"
-        "    keygen            Generate Ed25519 signing keypair\n"
+        "    keygen   [priv pub] Generate Ed25519 signing keypair\n"
         "    sign     <file>   Sign a file with an Ed25519 key\n"
         "    pack     <dir>    Create .warp from a directory\n\n"
         "  " WARP_BOLD "Examples:" WARP_RESET "\n"

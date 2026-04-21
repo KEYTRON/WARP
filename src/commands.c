@@ -281,9 +281,8 @@ int cmd_update(int argc, char **argv) {
 
 /* ── warp keygen ─────────────────────────────────────────────── */
 int cmd_keygen(int argc, char **argv) {
-    (void)argc; (void)argv;
-    const char *priv = "/root/.warp-privkey.hex";
-    const char *pub  = "/root/.warp-pubkey.hex";
+    const char *priv = argc > 0 ? argv[0] : "/root/.warp-privkey.hex";
+    const char *pub  = argc > 1 ? argv[1] : "/root/.warp-pubkey.hex";
     printf("\n  Generating Ed25519 keypair...\n\n");
     if (warp_keygen(priv, pub) != WARP_OK) {
         warp_err("keygen failed");
@@ -293,7 +292,7 @@ int cmd_keygen(int argc, char **argv) {
     warp_ok("Private key: %s", priv);
     warp_ok("Public key:  %s", pub);
     printf("\n  " WARP_YELLOW "Keep the private key secure!" WARP_RESET "\n");
-    printf("  Paste the C array above into packages/warp/src/crypto.c\n\n");
+    printf("  Paste the public key bytes into src/crypto.c\n\n");
     return 0;
 }
 
@@ -390,7 +389,7 @@ int cmd_pack(int argc, char **argv) {
     printf("    \"description\": \"...\",\n");
     printf("    \"sha256\": \"%s\",\n", sha256);
     printf("    \"size\": %ld,\n", sz);
-    printf("    \"url\": \"https://github.com/KEYTRON/WARP/releases/download/packages/%s\"\n", out_name);
+    printf("    \"url\": \"https://github.com/KEYTRON/WARP/releases/download/packages-v1/%s\"\n", out_name);
     printf("  }\n\n");
 
     return 0;
