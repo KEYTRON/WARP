@@ -57,8 +57,23 @@ int cmd_install(int argc, char **argv) {
     warp_info("Downloading %s from %s ...", name, variant.url);
     warp_dl_opts_t dl = { .show_progress = 1 };
     if (warp_download_variant(&variant, tmp_path, &dl) != WARP_OK) {
-        warp_err("Download failed");
-        return 1;
+        if (strcmp(variant.kind, "direct") != 0 && entry.url[0]) {
+            warp_warn("Primary variant failed, retrying direct download");
+            memset(&variant, 0, sizeof(variant));
+            strncpy(variant.kind, "direct", sizeof(variant.kind) - 1);
+            strncpy(variant.url, entry.url, sizeof(variant.url) - 1);
+            strncpy(variant.sha256, entry.sha256, sizeof(variant.sha256) - 1);
+            strncpy(variant.signature, entry.signature, sizeof(variant.signature) - 1);
+            variant.size = entry.size;
+            variant.priority = 0;
+            if (warp_download_variant(&variant, tmp_path, &dl) != WARP_OK) {
+                warp_err("Download failed");
+                return 1;
+            }
+        } else {
+            warp_err("Download failed");
+            return 1;
+        }
     }
 
     /* Verify SHA256 */
