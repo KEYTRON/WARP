@@ -70,18 +70,25 @@ static const char b64_table[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 int warp_base64_decode(const char *in, uint8_t *out, size_t *out_len) {
-    size_t in_len = strlen(in);
+    char clean[256];
+    size_t n = 0;
+    for (const char *p = in; *p && n + 1 < sizeof(clean); p++) {
+        if (!isspace((unsigned char)*p)) clean[n++] = *p;
+    }
+    clean[n] = '\0';
+
+    size_t in_len = strlen(clean);
     if (in_len % 4 != 0) return WARP_ERR_INVAL;
     *out_len = in_len / 4 * 3;
-    if (in[in_len - 1] == '=') (*out_len)--;
-    if (in[in_len - 2] == '=') (*out_len)--;
+    if (clean[in_len - 1] == '=') (*out_len)--;
+    if (clean[in_len - 2] == '=') (*out_len)--;
 
     size_t j = 0;
     for (size_t i = 0; i < in_len; i += 4) {
-        uint32_t a = (uint32_t)(strchr(b64_table, in[i])   - b64_table);
-        uint32_t b = (uint32_t)(strchr(b64_table, in[i+1]) - b64_table);
-        uint32_t c = in[i+2] == '=' ? 0 : (uint32_t)(strchr(b64_table, in[i+2]) - b64_table);
-        uint32_t d = in[i+3] == '=' ? 0 : (uint32_t)(strchr(b64_table, in[i+3]) - b64_table);
+        uint32_t a = (uint32_t)(strchr(b64_table, clean[i])   - b64_table);
+        uint32_t b = (uint32_t)(strchr(b64_table, clean[i+1]) - b64_table);
+        uint32_t c = clean[i+2] == '=' ? 0 : (uint32_t)(strchr(b64_table, clean[i+2]) - b64_table);
+        uint32_t d = clean[i+3] == '=' ? 0 : (uint32_t)(strchr(b64_table, clean[i+3]) - b64_table);
         uint32_t triple = (a << 18) | (b << 12) | (c << 6) | d;
         if (j < *out_len) out[j++] = (triple >> 16) & 0xFF;
         if (j < *out_len) out[j++] = (triple >>  8) & 0xFF;
@@ -185,6 +192,10 @@ int warp_sign_file(const char *path, const char *privkey_hex_path, char out_b64[
     size_t key_len = 0;
     char *key_hex = read_file(privkey_hex_path, &key_len);
     if (!key_hex) return WARP_ERR_IO;
+
+    while (key_len > 0 && isspace((unsigned char)key_hex[key_len - 1])) {
+        key_hex[--key_len] = '\0';
+    }
 
     uint8_t priv[64] = {0};
     size_t priv_len = 0;
