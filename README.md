@@ -7,6 +7,8 @@ The trust model is simple:
 - GitHub release metadata is the source of truth for hashes and signatures.
 - Package delivery can happen through direct download, torrent, or P2P variants.
 - The downloaded bytes are always checked against the published SHA256 before installation.
+- Torrent/P2P are transport-only paths; they do not replace the GitHub-published hash and signature checks.
+- If a peer-sourced transfer stalls, WARP falls back to direct download.
 
 ## Build
 
@@ -72,6 +74,13 @@ If no `variants` array exists, WARP falls back to the legacy top-level `url` and
 Use `warp sign <file> [privkey_hex]` to create a `<file>.sig` sidecar with a base64 Ed25519 signature. The same keypair from `warp keygen` can be used to sign release metadata such as `index.json`.
 
 Use `warp keygen [privkey_hex pubkey_hex]` to write the signing keypair to custom paths when you do not want to store release keys under `/root`.
+
+WARP expects the package index and its signature from GitHub release assets:
+
+- `index.json`
+- `index.json.sig`
+
+Variant metadata inside `index.json` may point to torrent or magnet URLs, but verification still uses the GitHub-published hash and signature after the payload is fetched.
 
 For release indexes, the signed file and signature live side by side:
 

@@ -164,12 +164,16 @@ static int download_via_aria2c(const char *uri, const char *dest_path, const cha
     char cmd[2048];
     if (torrent_path) {
         snprintf(cmd, sizeof(cmd),
-                 "aria2c --allow-overwrite=true --seed-time=0 --console-log-level=warn "
+                 "aria2c --allow-overwrite=true --seed-time=0 --bt-stop-timeout=20 "
+                 "--bt-tracker-connect-timeout=15 --bt-tracker-timeout=15 "
+                 "--max-tries=2 --console-log-level=warn "
                  "--dir '%s' --out '%s' -T '%s'",
                  dir, base, torrent_path);
     } else {
         snprintf(cmd, sizeof(cmd),
-                 "aria2c --allow-overwrite=true --seed-time=0 --console-log-level=warn "
+                 "aria2c --allow-overwrite=true --seed-time=0 --bt-stop-timeout=20 "
+                 "--bt-tracker-connect-timeout=15 --bt-tracker-timeout=15 "
+                 "--max-tries=2 --console-log-level=warn "
                  "--dir '%s' --out '%s' '%s'",
                  dir, base, uri);
     }
