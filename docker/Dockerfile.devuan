@@ -1,0 +1,29 @@
+FROM devuan/devuan:stable AS build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    curl \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY . .
+RUN make -j"$(nproc)"
+
+FROM devuan/devuan:stable
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    libcurl4 \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+COPY --from=build /src/warp /usr/local/bin/warp
+
+ENTRYPOINT ["/usr/local/bin/warp"]
+CMD ["--help"]

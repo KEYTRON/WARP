@@ -1,0 +1,31 @@
+FROM voidlinux/voidlinux:latest AS build
+
+RUN printf '%s\n' 'repository=https://repo-default.voidlinux.org/current' > /etc/xbps.d/00-repository-main.conf
+RUN xbps-install -Suy -y xbps && xbps-remove -Oo
+RUN xbps-install -Suy -y \
+    base-devel \
+    ca-certificates \
+    libcurl-devel \
+    openssl-devel \
+    pkg-config \
+    && xbps-remove -Oo
+
+WORKDIR /src
+COPY . .
+RUN make -j"$(nproc)"
+
+FROM voidlinux/voidlinux:latest
+
+RUN printf '%s\n' 'repository=https://repo-default.voidlinux.org/current' > /etc/xbps.d/00-repository-main.conf
+RUN xbps-install -Suy -y xbps && xbps-remove -Oo
+RUN xbps-install -Suy -y \
+    ca-certificates \
+    curl \
+    openssl \
+    && xbps-remove -Oo
+
+WORKDIR /workspace
+COPY --from=build /src/warp /usr/local/bin/warp
+
+ENTRYPOINT ["/usr/local/bin/warp"]
+CMD ["--help"]

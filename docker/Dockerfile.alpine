@@ -1,0 +1,25 @@
+FROM alpine:latest AS build
+
+RUN apk add --no-cache \
+    build-base \
+    ca-certificates \
+    curl-dev \
+    openssl-dev \
+    pkgconf
+
+WORKDIR /src
+COPY . .
+RUN make -j"$(nproc)"
+
+FROM alpine:latest
+
+RUN apk add --no-cache \
+    ca-certificates \
+    curl \
+    openssl
+
+WORKDIR /workspace
+COPY --from=build /src/warp /usr/local/bin/warp
+
+ENTRYPOINT ["/usr/local/bin/warp"]
+CMD ["--help"]

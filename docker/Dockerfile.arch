@@ -1,0 +1,27 @@
+FROM archlinux:latest AS build
+
+RUN yes | pacman -Sy --needed \
+    base-devel \
+    ca-certificates \
+    curl \
+    openssl \
+    pkgconf \
+    && yes | pacman -Scc
+
+WORKDIR /src
+COPY . .
+RUN make -j"$(nproc)"
+
+FROM archlinux:latest
+
+RUN yes | pacman -Sy --needed \
+    ca-certificates \
+    curl \
+    openssl \
+    && yes | pacman -Scc
+
+WORKDIR /workspace
+COPY --from=build /src/warp /usr/local/bin/warp
+
+ENTRYPOINT ["/usr/local/bin/warp"]
+CMD ["--help"]

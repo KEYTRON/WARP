@@ -1,0 +1,30 @@
+FROM almalinux:9 AS build
+
+RUN dnf -y install --allowerasing \
+    ca-certificates \
+    curl \
+    gcc \
+    libcurl-devel \
+    make \
+    openssl-devel \
+    pkgconf-pkg-config \
+    && dnf clean all
+
+WORKDIR /src
+COPY . .
+RUN make -j"$(nproc)"
+
+FROM almalinux:9
+
+RUN dnf -y install --allowerasing \
+    ca-certificates \
+    curl \
+    libcurl \
+    openssl-libs \
+    && dnf clean all
+
+WORKDIR /workspace
+COPY --from=build /src/warp /usr/local/bin/warp
+
+ENTRYPOINT ["/usr/local/bin/warp"]
+CMD ["--help"]

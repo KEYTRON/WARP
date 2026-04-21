@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <sys/types.h>
 
 /* ── version & paths ─────────────────────────────────────────── */
 #define WARP_VERSION     "0.1.0"

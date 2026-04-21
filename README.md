@@ -2,6 +2,8 @@
 
 WARP is a small package manager written in C. It downloads signed package archives, verifies integrity, and manages a local store under `/var/lib/warp`.
 
+[![Alpine](https://github.com/KEYTRON/WARP/actions/workflows/warp-alpine.yml/badge.svg)](https://github.com/KEYTRON/WARP/actions/workflows/warp-alpine.yml) [![AlmaLinux](https://github.com/KEYTRON/WARP/actions/workflows/warp-almalinux.yml/badge.svg)](https://github.com/KEYTRON/WARP/actions/workflows/warp-almalinux.yml) [![Arch](https://github.com/KEYTRON/WARP/actions/workflows/warp-arch.yml/badge.svg)](https://github.com/KEYTRON/WARP/actions/workflows/warp-arch.yml) [![Artix](https://github.com/KEYTRON/WARP/actions/workflows/warp-artix.yml/badge.svg)](https://github.com/KEYTRON/WARP/actions/workflows/warp-artix.yml) [![Devuan](https://github.com/KEYTRON/WARP/actions/workflows/warp-devuan.yml/badge.svg)](https://github.com/KEYTRON/WARP/actions/workflows/warp-devuan.yml) [![Fedora](https://github.com/KEYTRON/WARP/actions/workflows/warp-fedora.yml/badge.svg)](https://github.com/KEYTRON/WARP/actions/workflows/warp-fedora.yml) [![Ubuntu](https://github.com/KEYTRON/WARP/actions/workflows/warp-ubuntu.yml/badge.svg)](https://github.com/KEYTRON/WARP/actions/workflows/warp-ubuntu.yml) [![Void](https://github.com/KEYTRON/WARP/actions/workflows/warp-void.yml/badge.svg)](https://github.com/KEYTRON/WARP/actions/workflows/warp-void.yml) [![Void Musl](https://github.com/KEYTRON/WARP/actions/workflows/warp-void-musl.yml/badge.svg)](https://github.com/KEYTRON/WARP/actions/workflows/warp-void-musl.yml)
+
 The trust model is simple:
 
 - GitHub release metadata is the source of truth for hashes and signatures.

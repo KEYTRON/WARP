@@ -1,0 +1,21 @@
+name: WARP Artix
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -f docker/Dockerfile.artix -t warp:artix .
+      - name: Smoke test
+        run: |
+          docker run --rm warp:artix --version
+          docker run --rm warp:artix --help

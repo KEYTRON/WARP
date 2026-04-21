@@ -1,0 +1,21 @@
+name: WARP Void Musl
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -f docker/Dockerfile.void-musl -t warp:void-musl .
+      - name: Smoke test
+        run: |
+          docker run --rm warp:void-musl --version
+          docker run --rm warp:void-musl --help
