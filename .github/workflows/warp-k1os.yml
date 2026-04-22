@@ -1,0 +1,27 @@
+name: WARP K1OS
+
+on:
+  push:
+    paths:
+      - "README.md"
+      - "README.ru.md"
+      - ".github/workflows/warp-k1os.yml"
+  pull_request:
+    paths:
+      - "README.md"
+      - "README.ru.md"
+      - ".github/workflows/warp-k1os.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull K1OS image
+        run: docker pull ghcr.io/keytron/k1os:latest
+
+      - name: Smoke test WARP in K1OS
+        run: docker run --rm ghcr.io/keytron/k1os:latest /bin/sh -lc 'warp --version && warp --help >/dev/null'
