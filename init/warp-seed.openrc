@@ -1,0 +1,22 @@
+#!/sbin/openrc-run
+
+name="warp-seed"
+description="WARP P2P Seed Server"
+command="/usr/local/bin/warp"
+command_args="seed"
+command_background=true
+pidfile="/run/${RC_SVCNAME}.pid"
+output_log="/var/log/warp-seed.log"
+error_log="/var/log/warp-seed.log"
+
+depend() {
+    need net
+    after bootmisc
+}
+
+start_pre() {
+    checkpath --directory --mode 0755 /var/lib/warp
+    ebegin "Waiting for network..."
+    sleep 3
+    eend 0
+}

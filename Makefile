@@ -29,8 +29,18 @@ $(TARGET): $(OBJS)
 $(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(SRC_DIR)/warp.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
+INIT_DIR = init
+
 install: $(TARGET)
 	install -Dm755 $(TARGET) $(DESTDIR)$(BINDIR)/warp
+
+install-service:
+	@chmod +x $(INIT_DIR)/install-service.sh
+	$(INIT_DIR)/install-service.sh seed
+
+install-volunteer:
+	@chmod +x $(INIT_DIR)/install-service.sh
+	$(INIT_DIR)/install-service.sh volunteer
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/warp

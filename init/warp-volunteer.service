@@ -1,0 +1,20 @@
+[Unit]
+Description=WARP Volunteer Seeder (caches & seeds less popular packages)
+Documentation=https://github.com/KEYTRON/K1OS
+After=network-online.target
+Wants=network-online.target
+# Require seed.conf to exist (run: warp volunteer --setup first)
+ConditionPathExists=/var/lib/warp/seed.conf
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/warp volunteer
+Restart=on-failure
+RestartSec=30
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=warp-volunteer
+
+[Install]
+WantedBy=multi-user.target

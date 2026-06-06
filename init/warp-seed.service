@@ -1,0 +1,23 @@
+[Unit]
+Description=WARP P2P Seed Server
+Documentation=https://github.com/KEYTRON/K1OS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/warp seed
+Restart=on-failure
+RestartSec=10
+# Allow time for network to settle on first boot
+ExecStartPre=/bin/sleep 3
+
+# Optional: limit upload bandwidth via cgroup (uncomment to enable)
+# CPUQuota=20%
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=warp-seed
+
+[Install]
+WantedBy=multi-user.target

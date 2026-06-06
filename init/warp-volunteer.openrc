@@ -1,0 +1,24 @@
+#!/sbin/openrc-run
+
+name="warp-volunteer"
+description="WARP Volunteer Seeder"
+command="/usr/local/bin/warp"
+command_args="volunteer"
+command_background=true
+pidfile="/run/${RC_SVCNAME}.pid"
+output_log="/var/log/warp-volunteer.log"
+error_log="/var/log/warp-volunteer.log"
+
+depend() {
+    need net
+    after bootmisc
+}
+
+start_pre() {
+    if [ ! -f /var/lib/warp/seed.conf ]; then
+        eerror "No volunteer config found."
+        eerror "Run: warp volunteer --setup"
+        return 1
+    fi
+    checkpath --directory --mode 0755 /var/lib/warp
+}

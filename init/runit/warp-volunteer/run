@@ -1,0 +1,7 @@
+#!/bin/sh
+[ -f /var/lib/warp/seed.conf ] || {
+    echo "No volunteer config. Run: warp volunteer --setup" >&2
+    sleep 30
+    exit 1
+}
+exec /usr/local/bin/warp volunteer 2>&1
