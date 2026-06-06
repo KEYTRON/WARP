@@ -11,7 +11,8 @@ SRCS    = $(SRC_DIR)/main.c \
           $(SRC_DIR)/download.c \
           $(SRC_DIR)/store.c \
           $(SRC_DIR)/index.c \
-          $(SRC_DIR)/commands.c
+          $(SRC_DIR)/commands.c \
+          $(SRC_DIR)/p2p.c
 
 OBJS    = $(SRCS:.c=.o)
 TARGET  = warp

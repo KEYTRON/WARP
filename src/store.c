@@ -103,6 +103,17 @@ int store_add(const warp_manifest_t *m, const char *warp_path, const char *sha25
     snprintf(files_dir, sizeof(files_dir), "%s/files", store_pkg);
     if (mkdirs(files_dir, 0755) != WARP_OK) return WARP_ERR_IO;
 
+    /* Save full sha256 for P2P serving */
+    char sha_path[768];
+    snprintf(sha_path, sizeof(sha_path), "%s/sha256", store_pkg);
+    FILE *sha_f = fopen(sha_path, "w");
+    if (sha_f) { fprintf(sha_f, "%s\n", sha256); fclose(sha_f); }
+
+    /* Keep a copy of the .warp archive for seeding to peers */
+    char warp_copy[768];
+    snprintf(warp_copy, sizeof(warp_copy), "%s/package.warp", store_pkg);
+    copy_file(warp_path, warp_copy);
+
     /* Extract .warp (tar.gz) into files/ */
     warp_info("Extracting package...");
     char cmd[2048];

@@ -14,7 +14,7 @@ static void print_banner(void) {
         "  ╚███╔███╔╝██║  ██║██║  ██║██║     \n"
         "   ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     " WARP_RESET
         WARP_CYAN " v" WARP_VERSION WARP_RESET "\n"
-        "  Standalone Package Manager\n\n"
+        "  K1OS Package Manager\n\n"
     );
 }
 
@@ -23,16 +23,22 @@ static void print_help(void) {
     printf(
         "  " WARP_BOLD "Usage:" WARP_RESET " warp <command> [args]\n\n"
         "  " WARP_BOLD "Commands:" WARP_RESET "\n"
-        "    install  <pkg>    Install a package\n"
-        "    remove   <pkg>    Remove a package\n"
-        "    list              List installed packages\n"
-        "    search   <query>  Search available packages\n"
-        "    rollback <pkg>    Revert to previous version\n"
-        "    info     <pkg>    Show package details\n"
-        "    update            Refresh package index\n"
-        "    keygen   [priv pub] Generate Ed25519 signing keypair\n"
-        "    sign     <file>   Sign a file with an Ed25519 key\n"
-        "    pack     <dir>    Create .warp from a directory\n\n"
+        "    install    <pkg>       Install a package\n"
+        "    remove     <pkg>       Remove a package\n"
+        "    list                   List installed packages\n"
+        "    search     <query>     Search available packages\n"
+        "    rollback   <pkg>       Revert to previous version\n"
+        "    info       <pkg>       Show package details\n"
+        "    update                 Refresh package index\n"
+        "    keygen                 Generate Ed25519 signing keypair\n"
+        "    pack       <dir>       Create .warp from a directory\n"
+        "    seed                   Seed installed packages to peers\n"
+        "    volunteer              Volunteer seeding (setup wizard)\n"
+        "      --setup              Re-run interactive setup\n"
+        "      --status             Show current config & usage\n"
+        "      --quota  <N>         Disk quota (e.g. 10G, 500M)\n"
+        "      --no-serve           Cache only, don't serve files\n"
+        "      --monthly <N>        Monthly upload cap (e.g. 50G)\n\n"
         "  " WARP_BOLD "Examples:" WARP_RESET "\n"
         "    warp search editor\n"
         "    warp install nano\n"
@@ -58,8 +64,9 @@ static const cmd_t commands[] = {
     { "info",     cmd_info     },
     { "update",   cmd_update   },
     { "keygen",   cmd_keygen   },
-    { "sign",     cmd_sign     },
-    { "pack",     cmd_pack     },
+    { "pack",      cmd_pack      },
+    { "seed",      cmd_seed      },
+    { "volunteer", cmd_volunteer },
     { NULL, NULL }
 };
 

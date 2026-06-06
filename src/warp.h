@@ -6,11 +6,20 @@
 #include <sys/types.h>
 
 /* ── version & paths ─────────────────────────────────────────── */
-#define WARP_VERSION     "0.1.0"
+#define WARP_VERSION     "0.2.0"
 #define WARP_STORE_DIR   "/var/lib/warp"
-#define WARP_INDEX_URL   "https://github.com/KEYTRON/WARP/releases/download/packages-v1/index.json"
+#define WARP_INDEX_URL   "https://github.com/KEYTRON/K1OS/releases/download/packages-v1/index.json"
 #define WARP_ARCH        "x86_64"
-#define WARP_MAX_VARIANTS 8
+
+/* ── P2P / seeding ───────────────────────────────────────────── */
+#define WARP_PEER_PORT       7777
+#define WARP_PEERS_CACHE     WARP_STORE_DIR "/peers.json"
+#define WARP_PEERS_MAX       64
+#define WARP_PEER_URL_MAX    256
+#define WARP_PEERS_MAX_AGE   300   /* peer list TTL: 5 minutes */
+#define WARP_P2P_TIMEOUT     30L   /* per-peer download timeout (seconds) */
+#define WARP_P2P_MAX_TRIES   5     /* max peers to try before fallback */
+#define WARP_TRACKER_URL     "https://keytron-prime.org/warp"
 
 /* ── compile-time flags ──────────────────────────────────────── */
 /* Define WARP_SKIP_SIG_VERIFY to skip Ed25519 signature checks (dev) */
@@ -49,15 +58,6 @@ typedef struct {
     int    bins_count;
 } warp_manifest_t;
 
-typedef struct {
-    char   kind[32];
-    char   url[WARP_MAX_URL];
-    char   sha256[WARP_SHA256_HEX];
-    char   signature[128];
-    size_t size;
-    int    priority;
-} warp_release_variant_t;
-
 /* ── index entry ─────────────────────────────────────────────── */
 typedef struct {
     char   name[WARP_MAX_NAME];
@@ -66,9 +66,6 @@ typedef struct {
     char   sha256[WARP_SHA256_HEX];
     char   url[WARP_MAX_URL];
     size_t size;
-    char   signature[128];
-    warp_release_variant_t variants[WARP_MAX_VARIANTS];
-    int    variants_count;
 } warp_pkg_entry_t;
 
 typedef struct {
@@ -77,7 +74,33 @@ typedef struct {
     int               capacity;
     char              timestamp[32];
     char              signature[128];
+    char              peer_list_url[WARP_MAX_URL];  /* optional, from index.json */
 } warp_index_t;
+
+/* ── P2P peer ────────────────────────────────────────────────── */
+typedef struct {
+    char url[WARP_PEER_URL_MAX];  /* e.g. http://1.2.3.4:7777 */
+} warp_peer_t;
+
+typedef struct {
+    warp_peer_t peers[WARP_PEERS_MAX];
+    int         count;
+} warp_peer_list_t;
+
+/* ── volunteer seeding config ────────────────────────────────── */
+#define WARP_SEED_CONF     WARP_STORE_DIR "/seed.conf"
+#define WARP_VOLUNTEER_DIR WARP_STORE_DIR "/volunteer"
+
+typedef struct {
+    size_t quota_bytes;          /* disk limit for volunteer cache          */
+    int    serve;                /* 1=serve to peers, 0=cache-only          */
+    size_t monthly_limit_bytes;  /* max upload per calendar month (0=∞)     */
+    size_t monthly_used_bytes;   /* bytes uploaded this month               */
+    char   month_tag[8];         /* "YYYY-MM" – reset sentinel              */
+    int    cheap_sd;             /* 1=cheap SD card mode (cache in /tmp)   */
+} warp_seed_config_t;
+
+extern char g_volunteer_dir[512];
 
 /* ── installed package info ──────────────────────────────────── */
 typedef struct {
@@ -92,15 +115,10 @@ int  warp_sha256_file(const char *path, char out_hex[WARP_SHA256_HEX]);
 int  warp_sha256_buf(const uint8_t *buf, size_t len, char out_hex[WARP_SHA256_HEX]);
 int  warp_keygen(const char *privkey_path, const char *pubkey_path);
 int  warp_verify_index_sig(const char *index_json, const char *sig_b64);
-int  warp_sign_buf(const uint8_t *msg, size_t msg_len, const uint8_t *privkey, size_t privkey_len,
-                   uint8_t sig[64]);
-int  warp_sign_file(const char *path, const char *privkey_hex_path, char out_b64[128]);
 int  warp_ed25519_verify(const uint8_t *msg, size_t msg_len,
                           const uint8_t sig[64],
                           const uint8_t pubkey[32]);
 int  warp_base64_decode(const char *in, uint8_t *out, size_t *out_len);
-int  warp_base64_encode(const uint8_t *in, size_t in_len, char *out, size_t out_cap);
-int  warp_hex_decode(const char *in, uint8_t *out, size_t out_cap, size_t *out_len);
 
 /* ── json.h (inline) ─────────────────────────────────────────── */
 typedef enum { JSON_NULL, JSON_BOOL, JSON_NUMBER, JSON_STRING,
@@ -132,8 +150,8 @@ typedef struct {
     char  computed_sha256[WARP_SHA256_HEX];   /* filled after download */
 } warp_dl_opts_t;
 
-int warp_download(const char *url, const char *dest_path, warp_dl_opts_t *opts);
-int warp_download_variant(const warp_release_variant_t *variant, const char *dest_path, warp_dl_opts_t *opts);
+int   warp_download(const char *url, const char *dest_path, warp_dl_opts_t *opts);
+char *warp_download_str(const char *url);
 
 /* ── store.h (inline) ────────────────────────────────────────── */
 int  store_init(void);
@@ -151,21 +169,32 @@ int  index_search(const warp_index_t *idx, const char *query,
                   warp_pkg_entry_t **results, int *count);
 int  index_find(const warp_index_t *idx, const char *name,
                 warp_pkg_entry_t *out);
-int  index_pick_variant(const warp_pkg_entry_t *entry, const char **reason,
-                        warp_release_variant_t *out);
 void index_free(warp_index_t *idx);
 
+/* ── p2p.h (inline) ──────────────────────────────────────────── */
+int    p2p_load_peers(warp_peer_list_t *out, const char *list_url);
+int    p2p_download(const char *pkg_name, const char *sha256_expected,
+                    const char *dest_path, warp_peer_list_t *peers);
+int    p2p_announce(const char *announce_url, const char *pkg_name,
+                    const char *sha256, int port, int is_volunteer);
+void   p2p_seed(int port);
+int    p2p_volunteer(warp_seed_config_t *cfg, int port);
+int    seed_config_load(warp_seed_config_t *cfg);
+int    seed_config_save(const warp_seed_config_t *cfg);
+size_t volunteer_used_bytes(void);
+
 /* ── commands ────────────────────────────────────────────────── */
-int cmd_install (int argc, char **argv);
-int cmd_remove  (int argc, char **argv);
-int cmd_list    (int argc, char **argv);
-int cmd_search  (int argc, char **argv);
-int cmd_rollback(int argc, char **argv);
-int cmd_info    (int argc, char **argv);
-int cmd_update  (int argc, char **argv);
-int cmd_keygen  (int argc, char **argv);
-int cmd_pack    (int argc, char **argv);
-int cmd_sign    (int argc, char **argv);
+int cmd_install   (int argc, char **argv);
+int cmd_remove    (int argc, char **argv);
+int cmd_list      (int argc, char **argv);
+int cmd_search    (int argc, char **argv);
+int cmd_rollback  (int argc, char **argv);
+int cmd_info      (int argc, char **argv);
+int cmd_update    (int argc, char **argv);
+int cmd_keygen    (int argc, char **argv);
+int cmd_pack      (int argc, char **argv);
+int cmd_seed      (int argc, char **argv);
+int cmd_volunteer (int argc, char **argv);
 
 /* ── utils ───────────────────────────────────────────────────── */
 #define WARP_RED    "\033[0;31m"

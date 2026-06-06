@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include "warp.h"
@@ -9,10 +8,11 @@
 /* ── master public key (placeholder — replace with real key) ─── */
 /* Generate with: warp keygen                                      */
 static const uint8_t WARP_MASTER_PUBKEY[32] = {
-    0xe3,0xda,0x01,0x79,0xff,0xb4,0x0f,0xfc,
-    0xe2,0x01,0x77,0xe9,0x09,0x55,0x43,0xd8,
-    0x43,0x51,0x88,0x2d,0x93,0x0b,0x3e,0x2f,
-    0xe1,0xbd,0xe0,0x1c,0x36,0x33,0xbc,0xc7,
+    /* TODO: replace with real Ed25519 public key after warp keygen */
+    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
 };
 
 /* ── SHA256 of a file ─────────────────────────────────────────── */
@@ -70,70 +70,23 @@ static const char b64_table[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 int warp_base64_decode(const char *in, uint8_t *out, size_t *out_len) {
-    char clean[256];
-    size_t n = 0;
-    for (const char *p = in; *p && n + 1 < sizeof(clean); p++) {
-        if (!isspace((unsigned char)*p)) clean[n++] = *p;
-    }
-    clean[n] = '\0';
-
-    size_t in_len = strlen(clean);
+    size_t in_len = strlen(in);
     if (in_len % 4 != 0) return WARP_ERR_INVAL;
     *out_len = in_len / 4 * 3;
-    if (clean[in_len - 1] == '=') (*out_len)--;
-    if (clean[in_len - 2] == '=') (*out_len)--;
+    if (in[in_len - 1] == '=') (*out_len)--;
+    if (in[in_len - 2] == '=') (*out_len)--;
 
     size_t j = 0;
     for (size_t i = 0; i < in_len; i += 4) {
-        uint32_t a = (uint32_t)(strchr(b64_table, clean[i])   - b64_table);
-        uint32_t b = (uint32_t)(strchr(b64_table, clean[i+1]) - b64_table);
-        uint32_t c = clean[i+2] == '=' ? 0 : (uint32_t)(strchr(b64_table, clean[i+2]) - b64_table);
-        uint32_t d = clean[i+3] == '=' ? 0 : (uint32_t)(strchr(b64_table, clean[i+3]) - b64_table);
+        uint32_t a = (uint32_t)(strchr(b64_table, in[i])   - b64_table);
+        uint32_t b = (uint32_t)(strchr(b64_table, in[i+1]) - b64_table);
+        uint32_t c = in[i+2] == '=' ? 0 : (uint32_t)(strchr(b64_table, in[i+2]) - b64_table);
+        uint32_t d = in[i+3] == '=' ? 0 : (uint32_t)(strchr(b64_table, in[i+3]) - b64_table);
         uint32_t triple = (a << 18) | (b << 12) | (c << 6) | d;
         if (j < *out_len) out[j++] = (triple >> 16) & 0xFF;
         if (j < *out_len) out[j++] = (triple >>  8) & 0xFF;
         if (j < *out_len) out[j++] =  triple        & 0xFF;
     }
-    return WARP_OK;
-}
-
-int warp_base64_encode(const uint8_t *in, size_t in_len, char *out, size_t out_cap) {
-    static const char table[] =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    size_t need = ((in_len + 2) / 3) * 4 + 1;
-    if (out_cap < need) return WARP_ERR_INVAL;
-
-    size_t j = 0;
-    for (size_t i = 0; i < in_len; i += 3) {
-        uint32_t a = in[i];
-        uint32_t b = (i + 1 < in_len) ? in[i + 1] : 0;
-        uint32_t c = (i + 2 < in_len) ? in[i + 2] : 0;
-        uint32_t triple = (a << 16) | (b << 8) | c;
-
-        out[j++] = table[(triple >> 18) & 0x3f];
-        out[j++] = table[(triple >> 12) & 0x3f];
-        out[j++] = (i + 1 < in_len) ? table[(triple >> 6) & 0x3f] : '=';
-        out[j++] = (i + 2 < in_len) ? table[triple & 0x3f] : '=';
-    }
-    out[j] = '\0';
-    return WARP_OK;
-}
-
-int warp_hex_decode(const char *in, uint8_t *out, size_t out_cap, size_t *out_len) {
-    size_t len = strlen(in);
-    if (len % 2 != 0) return WARP_ERR_INVAL;
-    size_t need = len / 2;
-    if (out_cap < need) return WARP_ERR_INVAL;
-
-    for (size_t i = 0; i < need; i++) {
-        char hi = in[i * 2];
-        char lo = in[i * 2 + 1];
-        if (!isxdigit((unsigned char)hi) || !isxdigit((unsigned char)lo))
-            return WARP_ERR_INVAL;
-        char tmp[3] = { hi, lo, '\0' };
-        out[i] = (uint8_t)strtoul(tmp, NULL, 16);
-    }
-    if (out_len) *out_len = need;
     return WARP_OK;
 }
 
@@ -162,57 +115,6 @@ int warp_ed25519_verify(const uint8_t *msg, size_t msg_len,
     EVP_PKEY_free(pkey);
     return rc;
 #endif
-}
-
-int warp_sign_buf(const uint8_t *msg, size_t msg_len, const uint8_t *privkey, size_t privkey_len,
-                  uint8_t sig[64]) {
-    EVP_PKEY *pkey = EVP_PKEY_new_raw_private_key(EVP_PKEY_ED25519, NULL, privkey, privkey_len);
-    if (!pkey) return WARP_ERR_SIG;
-
-    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
-    if (!ctx) {
-        EVP_PKEY_free(pkey);
-        return WARP_ERR_SIG;
-    }
-
-    size_t sig_len = 64;
-    int rc = WARP_ERR_SIG;
-    if (EVP_DigestSignInit(ctx, NULL, NULL, NULL, pkey) == 1 &&
-        EVP_DigestSign(ctx, sig, &sig_len, msg, msg_len) == 1 &&
-        sig_len == 64) {
-        rc = WARP_OK;
-    }
-
-    EVP_MD_CTX_free(ctx);
-    EVP_PKEY_free(pkey);
-    return rc;
-}
-
-int warp_sign_file(const char *path, const char *privkey_hex_path, char out_b64[128]) {
-    size_t key_len = 0;
-    char *key_hex = read_file(privkey_hex_path, &key_len);
-    if (!key_hex) return WARP_ERR_IO;
-
-    while (key_len > 0 && isspace((unsigned char)key_hex[key_len - 1])) {
-        key_hex[--key_len] = '\0';
-    }
-
-    uint8_t priv[64] = {0};
-    size_t priv_len = 0;
-    int rc = warp_hex_decode(key_hex, priv, sizeof(priv), &priv_len);
-    free(key_hex);
-    if (rc != WARP_OK) return rc;
-
-    size_t msg_len = 0;
-    char *msg = read_file(path, &msg_len);
-    if (!msg) return WARP_ERR_IO;
-
-    uint8_t sig[64];
-    rc = warp_sign_buf((const uint8_t *)msg, msg_len, priv, priv_len, sig);
-    free(msg);
-    if (rc != WARP_OK) return rc;
-
-    return warp_base64_encode(sig, sizeof(sig), out_b64, 128);
 }
 
 /* ── verify index signature ───────────────────────────────────── */
