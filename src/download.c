@@ -152,7 +152,7 @@ char *warp_download_str(const char *url) {
     curl_easy_cleanup(curl);
 
     if (res != CURLE_OK) {
-        free(sb.buf);
+        warp_warn("curl error: %s", curl_easy_strerror(res)); free(sb.buf);
         return NULL;
     }
     return sb.buf;

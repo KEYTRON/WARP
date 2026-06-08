@@ -33,11 +33,16 @@ static int index_fetch_and_cache(void) {
     }
     /* Write to cache */
     if (mkdirs(WARP_STORE_DIR, 0755) != WARP_OK) {
+        warp_err("Failed to create store dir %s (Permission denied?)", WARP_STORE_DIR);
         free(data);
         return WARP_ERR_IO;
     }
     FILE *f = fopen(INDEX_CACHE, "w");
-    if (!f) { free(data); return WARP_ERR_IO; }
+    if (!f) { 
+        warp_err("Failed to write %s (Permission denied?). Run with sudo!", INDEX_CACHE);
+        free(data); 
+        return WARP_ERR_IO; 
+    }
     fwrite(data, 1, strlen(data), f);
     fclose(f);
     free(data);

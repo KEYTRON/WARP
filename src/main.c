@@ -5,7 +5,7 @@
 #include "warp.h"
 
 const char *g_warp_mirrors[WARP_INDEX_MIRRORS] = {
-    "https://raw.githubusercontent.com/KEYTRON/K1OS/packages",
+    "https://github.com/KEYTRON/K1OS/raw/packages",
     "https://gitlab.com/KEYTRON/K1OS/-/raw/packages",
     "https://gitverse.ru/keytron46/K1OS/raw/branch/packages"
 };
