@@ -5,9 +5,9 @@
 #include "warp.h"
 
 const char *g_warp_mirrors[WARP_INDEX_MIRRORS] = {
-    "https://github.com/KEYTRON/K1OS/releases/download/packages-v1",
-    "https://gitlab.com/KEYTRON/K1OS/-/releases/packages-v1/downloads",
-    "https://gitverse.ru/api/packages/keytron46/generic/warp/packages-v1"
+    "https://raw.githubusercontent.com/KEYTRON/K1OS/packages",
+    "https://gitlab.com/KEYTRON/K1OS/-/raw/packages",
+    "https://gitverse.ru/keytron46/K1OS/raw/branch/packages"
 };
 
 static void print_banner(void) {

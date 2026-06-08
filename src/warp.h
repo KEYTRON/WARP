@@ -6,7 +6,7 @@
 #include <sys/types.h>
 
 /* ── version & paths ─────────────────────────────────────────── */
-#define WARP_VERSION     "0.3.0"
+#define WARP_VERSION     "0.3.1"
 #define WARP_STORE_DIR   "/var/lib/warp"
 #define WARP_INDEX_MIRRORS 3
 extern const char *g_warp_mirrors[WARP_INDEX_MIRRORS];
