@@ -6,9 +6,10 @@
 #include <sys/types.h>
 
 /* ── version & paths ─────────────────────────────────────────── */
-#define WARP_VERSION     "0.2.0"
+#define WARP_VERSION     "0.3.0"
 #define WARP_STORE_DIR   "/var/lib/warp"
-#define WARP_INDEX_URL   "https://github.com/KEYTRON/K1OS/releases/download/packages-v1/index.json"
+#define WARP_INDEX_MIRRORS 3
+extern const char *g_warp_mirrors[WARP_INDEX_MIRRORS];
 #define WARP_ARCH        "x86_64"
 
 /* ── P2P / seeding ───────────────────────────────────────────── */
@@ -151,6 +152,7 @@ typedef struct {
 } warp_dl_opts_t;
 
 int   warp_download(const char *url, const char *dest_path, warp_dl_opts_t *opts);
+int   warp_download_pkg(const char *orig_url, const char *dest_path, warp_dl_opts_t *opts);
 char *warp_download_str(const char *url);
 
 /* ── store.h (inline) ────────────────────────────────────────── */

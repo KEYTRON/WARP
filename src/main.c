@@ -4,6 +4,12 @@
 #include <curl/curl.h>
 #include "warp.h"
 
+const char *g_warp_mirrors[WARP_INDEX_MIRRORS] = {
+    "https://github.com/KEYTRON/K1OS/releases/download/packages-v1",
+    "https://gitlab.com/KEYTRON/K1OS/-/releases/packages-v1/downloads",
+    "https://gitverse.ru/api/packages/keytron46/generic/warp/packages-v1"
+};
+
 static void print_banner(void) {
     printf(
         "\n"
@@ -43,7 +49,7 @@ static void print_help(void) {
         "    warp search editor\n"
         "    warp install nano\n"
         "    warp rollback nano\n\n"
-        "  Index: " WARP_INDEX_URL "\n"
+        "  Mirrors: GitHub, GitLab, GitVerse\n"
         "  Store: " WARP_STORE_DIR "\n\n"
     );
 }

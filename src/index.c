@@ -19,10 +19,16 @@ static int index_is_stale(void) {
 }
 
 static int index_fetch_and_cache(void) {
-    warp_info("Fetching index from %s ...", WARP_INDEX_URL);
-    char *data = warp_download_str(WARP_INDEX_URL);
+    char *data = NULL;
+    char url[512];
+    for (int i = 0; i < WARP_INDEX_MIRRORS; i++) {
+        snprintf(url, sizeof(url), "%s/index.json", g_warp_mirrors[i]);
+        warp_info("Fetching index from mirror %d ...", i + 1);
+        data = warp_download_str(url);
+        if (data) break;
+    }
     if (!data) {
-        warp_err("Failed to fetch index");
+        warp_err("Failed to fetch index from all mirrors");
         return WARP_ERR_NET;
     }
     /* Write to cache */

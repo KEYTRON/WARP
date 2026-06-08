@@ -65,8 +65,7 @@ int cmd_install(int argc, char **argv) {
 
     warp_dl_opts_t dl = { .show_progress = 1 };
     if (!downloaded_ok) {
-        warp_info("Downloading %s ...", entry.url);
-        if (warp_download(entry.url, tmp_path, &dl) != WARP_OK) {
+        if (warp_download_pkg(entry.url, tmp_path, &dl) != WARP_OK) {
             warp_err("Download failed");
             return 1;
         }

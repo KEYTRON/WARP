@@ -848,7 +848,7 @@ int p2p_volunteer(warp_seed_config_t *cfg, int port) {
         snprintf(tmp,  sizeof(tmp),  "%s.tmp",     dest);
 
         warp_dl_opts_t dl = { .show_progress = 1 };
-        if (warp_download(e->url, tmp, &dl) != WARP_OK) {
+        if (warp_download_pkg(e->url, tmp, &dl) != WARP_OK) {
             warp_warn("  Download failed: %s", e->name);
             remove(tmp);
             continue;

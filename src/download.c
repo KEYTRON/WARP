@@ -100,6 +100,22 @@ int warp_download(const char *url, const char *dest_path, warp_dl_opts_t *opts) 
     return rc;
 }
 
+int warp_download_pkg(const char *orig_url, const char *dest_path, warp_dl_opts_t *opts) {
+    const char *filename = strrchr(orig_url, '/');
+    if (filename) filename++; else filename = orig_url;
+
+    for (int i = 0; i < WARP_INDEX_MIRRORS; i++) {
+        char try_url[512];
+        snprintf(try_url, sizeof(try_url), "%s/%s", g_warp_mirrors[i], filename);
+        warp_info("Trying mirror %d: %s", i + 1, try_url);
+        int rc = warp_download(try_url, dest_path, opts);
+        if (rc == WARP_OK) {
+            return WARP_OK;
+        }
+    }
+    return WARP_ERR_NET;
+}
+
 /* ── download to a string buffer (for index.json etc) ────────── */
 typedef struct { char *buf; size_t len; size_t cap; } str_buf_t;
 
