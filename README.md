@@ -80,14 +80,14 @@ Use `warp sign <file> [privkey_hex]` to create a `<file>.sig` sidecar with a bas
 
 Use `warp keygen [privkey_hex pubkey_hex]` to write the signing keypair to custom paths when you do not want to store release keys under `/root`.
 
-WARP expects the package index and its signature from GitHub release assets:
+WARP fetches `index.json` and its detached signature from the same mirror,
+side by side:
 
 - `index.json`
 - `index.json.sig`
 
-Variant metadata inside `index.json` may point to torrent or magnet URLs, but verification still uses the GitHub-published hash and signature after the payload is fetched.
-
-For release indexes, the signed file and signature live side by side:
-
-- `index.json`
-- `index.sig`
+`index.json.sig` is the base64 Ed25519 signature of the raw `index.json`
+bytes (as produced by `warp sign index.json`), not a field inside the JSON
+itself — a signature can't cover a document that already contains that same
+signature as one of its own fields. If a mirror serves an `index.json`
+without a matching, valid `index.json.sig`, WARP refuses to trust it.

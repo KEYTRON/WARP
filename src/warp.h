@@ -115,11 +115,17 @@ typedef struct {
 int  warp_sha256_file(const char *path, char out_hex[WARP_SHA256_HEX]);
 int  warp_sha256_buf(const uint8_t *buf, size_t len, char out_hex[WARP_SHA256_HEX]);
 int  warp_keygen(const char *privkey_path, const char *pubkey_path);
-int  warp_verify_index_sig(const char *index_json, const char *sig_b64);
+int  warp_verify_index_sig(const char *data, const char *sig_b64);
 int  warp_ed25519_verify(const uint8_t *msg, size_t msg_len,
                           const uint8_t sig[64],
                           const uint8_t pubkey[32]);
+int  warp_sign_buf(const uint8_t *msg, size_t msg_len,
+                    const uint8_t *privkey, size_t privkey_len,
+                    uint8_t sig[64]);
+int  warp_sign_file(const char *path, const char *privkey_hex_path, char out_b64[128]);
 int  warp_base64_decode(const char *in, uint8_t *out, size_t *out_len);
+int  warp_base64_encode(const uint8_t *in, size_t in_len, char *out, size_t out_cap);
+int  warp_hex_decode(const char *in, uint8_t *out, size_t out_cap, size_t *out_len);
 
 /* ── json.h (inline) ─────────────────────────────────────────── */
 typedef enum { JSON_NULL, JSON_BOOL, JSON_NUMBER, JSON_STRING,
@@ -194,6 +200,7 @@ int cmd_rollback  (int argc, char **argv);
 int cmd_info      (int argc, char **argv);
 int cmd_update    (int argc, char **argv);
 int cmd_keygen    (int argc, char **argv);
+int cmd_sign      (int argc, char **argv);
 int cmd_pack      (int argc, char **argv);
 int cmd_seed      (int argc, char **argv);
 int cmd_volunteer (int argc, char **argv);

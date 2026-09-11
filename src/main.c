@@ -36,7 +36,8 @@ static void print_help(void) {
         "    rollback   <pkg>       Revert to previous version\n"
         "    info       <pkg>       Show package details\n"
         "    update                 Refresh package index\n"
-        "    keygen                 Generate Ed25519 signing keypair\n"
+        "    keygen     [priv pub]  Generate Ed25519 signing keypair\n"
+        "    sign       <file>      Sign a file, writing <file>.sig\n"
         "    pack       <dir>       Create .warp from a directory\n"
         "    seed                   Seed installed packages to peers\n"
         "    volunteer              Volunteer seeding (setup wizard)\n"
@@ -70,6 +71,7 @@ static const cmd_t commands[] = {
     { "info",     cmd_info     },
     { "update",   cmd_update   },
     { "keygen",   cmd_keygen   },
+    { "sign",     cmd_sign     },
     { "pack",      cmd_pack      },
     { "seed",      cmd_seed      },
     { "volunteer", cmd_volunteer },

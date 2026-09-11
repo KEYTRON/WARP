@@ -35,7 +35,20 @@ int cmd_install(int argc, char **argv) {
         index_free(&idx);
         return 1;
     }
+    /* Copy before index_free() wipes the struct (peer_list_url lives
+     * inside warp_index_t, not behind a pointer we could dangle). */
+    char peer_list_url[WARP_MAX_URL];
+    strncpy(peer_list_url, idx.peer_list_url, sizeof(peer_list_url)-1);
+    peer_list_url[sizeof(peer_list_url)-1] = '\0';
     index_free(&idx);
+
+    /* An unhashed entry can't be verified after download — refuse it
+     * outright instead of installing on trust alone. */
+    if (!entry.sha256[0]) {
+        warp_err("No SHA256 published for '%s' in the index", name);
+        warp_err("Refusing to install a package whose integrity can't be verified");
+        return 1;
+    }
 
     printf("\n  " WARP_BOLD "%s" WARP_RESET " %s\n", entry.name, entry.version);
     if (entry.description[0])
@@ -49,9 +62,9 @@ int cmd_install(int argc, char **argv) {
 
     int downloaded_ok = 0;
 
-    if (entry.sha256[0] && idx.peer_list_url[0]) {
+    if (peer_list_url[0]) {
         warp_peer_list_t peers;
-        if (p2p_load_peers(&peers, idx.peer_list_url) == WARP_OK && peers.count > 0) {
+        if (p2p_load_peers(&peers, peer_list_url) == WARP_OK && peers.count > 0) {
             warp_info("Found %d peer(s) — trying P2P download...", peers.count);
             if (p2p_download(entry.name, entry.sha256, tmp_path, &peers) == WARP_OK) {
                 downloaded_ok = 1;   /* SHA256 already verified inside p2p_download */
@@ -71,22 +84,16 @@ int cmd_install(int argc, char **argv) {
         }
 
         /* Verify SHA256 from direct download */
-        if (entry.sha256[0]) {
-            warp_info("Verifying integrity...");
-            if (strcmp(dl.computed_sha256, entry.sha256) != 0) {
-                warp_err("SHA256 mismatch!");
-                warp_err("  Expected: %s", entry.sha256);
-                warp_err("  Got:      %s", dl.computed_sha256);
-                remove(tmp_path);
-                return 1;
-            }
-        } else {
-            warp_warn("No SHA256 in index — skipping integrity check");
+        warp_info("Verifying integrity...");
+        if (strcmp(dl.computed_sha256, entry.sha256) != 0) {
+            warp_err("SHA256 mismatch!");
+            warp_err("  Expected: %s", entry.sha256);
+            warp_err("  Got:      %s", dl.computed_sha256);
+            remove(tmp_path);
+            return 1;
         }
     }
-    if (downloaded_ok || entry.sha256[0]) {
-        warp_ok("SHA256 verified");
-    }
+    warp_ok("SHA256 verified");
 
     /* Parse manifest from archive */
     char manifest_tmp[512];
@@ -146,9 +153,9 @@ int cmd_install(int argc, char **argv) {
     warp_ok("Installed: %s %s", name, entry.version);
 
     /* Announce to tracker so others can download from us */
-    if (idx.peer_list_url[0] || WARP_TRACKER_URL[0]) {
-        const char *tracker = idx.peer_list_url[0]
-                              ? idx.peer_list_url : WARP_TRACKER_URL;
+    if (peer_list_url[0] || WARP_TRACKER_URL[0]) {
+        const char *tracker = peer_list_url[0]
+                              ? peer_list_url : WARP_TRACKER_URL;
         /* Tracker announce base should not include dashboard or peer-list paths. */
         char announce_url[WARP_MAX_URL];
         snprintf(announce_url, sizeof(announce_url), "%s", tracker);
@@ -301,11 +308,10 @@ int cmd_update(int argc, char **argv) {
     return 0;
 }
 
-/* ── warp keygen ─────────────────────────────────────────────── */
+/* ── warp keygen [priv pub] ──────────────────────────────────── */
 int cmd_keygen(int argc, char **argv) {
-    (void)argc; (void)argv;
-    const char *priv = "/root/.warp-privkey.hex";
-    const char *pub  = "/root/.warp-pubkey.hex";
+    const char *priv = argc > 0 ? argv[0] : "/root/.warp-privkey.hex";
+    const char *pub  = argc > 1 ? argv[1] : "/root/.warp-pubkey.hex";
     printf("\n  Generating Ed25519 keypair...\n\n");
     if (warp_keygen(priv, pub) != WARP_OK) {
         warp_err("keygen failed");
@@ -315,7 +321,40 @@ int cmd_keygen(int argc, char **argv) {
     warp_ok("Private key: %s", priv);
     warp_ok("Public key:  %s", pub);
     printf("\n  " WARP_YELLOW "Keep the private key secure!" WARP_RESET "\n");
-    printf("  Paste the C array above into packages/warp/src/crypto.c\n\n");
+    printf("  Paste the C array above into src/crypto.c\n\n");
+    return 0;
+}
+
+/* ── warp sign <file> [privkey_hex] ──────────────────────────── */
+int cmd_sign(int argc, char **argv) {
+    if (argc < 1) { warp_err("Usage: warp sign <file> [privkey_hex]"); return 1; }
+    const char *path = argv[0];
+    const char *priv = argc > 1 ? argv[1] : "/root/.warp-privkey.hex";
+
+    if (!path_exists(path)) {
+        warp_err("File not found: %s", path);
+        return 1;
+    }
+
+    char sig[128];
+    if (warp_sign_file(path, priv, sig) != WARP_OK) {
+        warp_err("Signing failed (missing/invalid private key at %s?)", priv);
+        return 1;
+    }
+
+    char sig_path[768];
+    snprintf(sig_path, sizeof(sig_path), "%s.sig", path);
+    FILE *f = fopen(sig_path, "w");
+    if (!f) {
+        warp_err("Cannot write signature file: %s", sig_path);
+        return 1;
+    }
+    fprintf(f, "%s\n", sig);
+    fclose(f);
+
+    warp_ok("Signed: %s", path);
+    printf("  Signature file: %s\n", sig_path);
+    printf("  Signature:      %s\n\n", sig);
     return 0;
 }
 
