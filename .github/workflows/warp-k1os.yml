@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, k1lab, warp]
     steps:
       - name: Pull K1OS image
         run: docker pull ghcr.io/keytron/k1os:latest
