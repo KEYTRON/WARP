@@ -56,11 +56,18 @@ By default the binary is installed to `/usr/local/bin/warp`. Set `PREFIX` if you
 
 ## Release/index layout
 
-The package index is expected at:
+The package index and the archives live in the `packages` branch of
+`KEYTRON/K1OS` (Git LFS for the `.warp` files) and are fetched through the
+mirror list compiled into `src/main.c`, in order:
 
-`https://github.com/KEYTRON/WARP/releases/download/packages-v1/index.json`
+1. `https://github.com/KEYTRON/K1OS/raw/packages`
+2. `https://gitlab.com/KEYTRON/K1OS/-/raw/packages`
+3. `https://gitverse.ru/keytron46/K1OS/raw/branch/packages`
 
-Package archives are expected to be published from the same repository under release assets.
+Each mirror must serve `index.json`, `index.json.sig` and the archives side by
+side. `tools/make-index.py <packages-dir> --base-url <mirror> --key <priv.hex>`
+regenerates the index from the archives actually present (real sha256 and
+size, entries without an archive are dropped) and signs it with `warp sign`.
 
 ### Variants
 

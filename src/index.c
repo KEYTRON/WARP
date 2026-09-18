@@ -19,61 +19,79 @@ static int index_is_stale(void) {
     return (time(NULL) - st.st_mtime) > INDEX_MAX_AGE;
 }
 
-static int index_fetch_and_cache(void) {
-    char *data = NULL;
-    char url[512];
-    int mirror_i = -1;
-    for (int i = 0; i < WARP_INDEX_MIRRORS; i++) {
-        snprintf(url, sizeof(url), "%s/index.json", g_warp_mirrors[i]);
-        warp_info("Fetching index from mirror %d ...", i + 1);
-        data = warp_download_str(url);
-        if (data) { mirror_i = i; break; }
-    }
-    if (!data) {
-        warp_err("Failed to fetch index from all mirrors");
-        return WARP_ERR_NET;
-    }
+static void trim_sig(char *sig) {
+    size_t n = strlen(sig);
+    while (n > 0 && (sig[n-1] == '\n' || sig[n-1] == '\r' || sig[n-1] == ' '))
+        sig[--n] = '\0';
+}
 
-    /* Fetch the detached signature — try the mirror that served the
-     * index first, then fall back to the others. A mismatched or
-     * missing signature is a verification failure, not a fetch
-     * failure, so it's handled later in index_parse(). */
-    char *sig = NULL;
-    for (int i = 0; i < WARP_INDEX_MIRRORS && !sig; i++) {
-        int m = (mirror_i + i) % WARP_INDEX_MIRRORS;
-        snprintf(url, sizeof(url), "%s/index.json.sig", g_warp_mirrors[m]);
-        sig = warp_download_str(url);
-    }
-
-    /* Write to cache */
-    if (mkdirs(WARP_STORE_DIR, 0755) != WARP_OK) {
-        warp_err("Failed to create store dir %s (Permission denied?)", WARP_STORE_DIR);
-        free(data);
-        free(sig);
-        return WARP_ERR_IO;
-    }
-    FILE *f = fopen(INDEX_CACHE, "w");
-    if (!f) {
-        warp_err("Failed to write %s (Permission denied?). Run with sudo!", INDEX_CACHE);
-        free(data);
-        free(sig);
-        return WARP_ERR_IO;
-    }
+static int write_file(const char *path, const char *data) {
+    FILE *f = fopen(path, "w");
+    if (!f) return WARP_ERR_IO;
     fwrite(data, 1, strlen(data), f);
     fclose(f);
-    free(data);
-
-    /* Always resync the cached signature with the cached index: a
-     * fetch that finds no .sig must not leave a stale one behind
-     * that happens to belong to a previous, different index.json. */
-    if (sig) {
-        FILE *sf = fopen(INDEX_SIG_CACHE, "w");
-        if (sf) { fwrite(sig, 1, strlen(sig), sf); fclose(sf); }
-        free(sig);
-    } else {
-        remove(INDEX_SIG_CACHE);
-    }
     return WARP_OK;
+}
+
+/* Fetch index.json and its detached index.json.sig from the same mirror
+ * and verify the pair in memory before anything touches the cache. A
+ * mirror that is stale, unsigned or tampered is skipped for the next
+ * one; mixing an index from one mirror with a signature from another
+ * can never verify and only hides which mirror is broken. */
+static int index_fetch_and_cache(void) {
+    char url[512];
+    int saw_unverified = 0;
+
+    for (int i = 0; i < WARP_INDEX_MIRRORS; i++) {
+        warp_info("Fetching index from mirror %d ...", i + 1);
+        snprintf(url, sizeof(url), "%s/index.json", g_warp_mirrors[i]);
+        char *data = warp_download_str(url);
+        if (!data) continue;
+
+        snprintf(url, sizeof(url), "%s/index.json.sig", g_warp_mirrors[i]);
+        char *sig = warp_download_str(url);
+        if (!sig || !*sig) {
+            warp_warn("Mirror %d serves an unsigned index — skipping it", i + 1);
+            free(data);
+            free(sig);
+            saw_unverified = 1;
+            continue;
+        }
+        trim_sig(sig);
+        if (warp_verify_index_sig(data, sig) != WARP_OK) {
+            warp_warn("Mirror %d: index signature does not verify (stale or tampered) — skipping it", i + 1);
+            free(data);
+            free(sig);
+            saw_unverified = 1;
+            continue;
+        }
+
+        if (mkdirs(WARP_STORE_DIR, 0755) != WARP_OK) {
+            warp_err("Failed to create store dir %s (Permission denied?)", WARP_STORE_DIR);
+            free(data);
+            free(sig);
+            return WARP_ERR_IO;
+        }
+        /* Signature first: a crash between the two writes must never
+         * leave a new index next to the previous index's signature. */
+        remove(INDEX_SIG_CACHE);
+        int rc = write_file(INDEX_CACHE, data);
+        if (rc == WARP_OK) rc = write_file(INDEX_SIG_CACHE, sig);
+        free(data);
+        free(sig);
+        if (rc != WARP_OK) {
+            warp_err("Failed to write %s (Permission denied?). Run with sudo!", INDEX_CACHE);
+            return WARP_ERR_IO;
+        }
+        return WARP_OK;
+    }
+
+    if (saw_unverified) {
+        warp_err("No mirror served a correctly signed index");
+        return WARP_ERR_SIG;
+    }
+    warp_err("Failed to fetch index from all mirrors");
+    return WARP_ERR_NET;
 }
 
 static int index_parse(const char *json_src, warp_index_t *idx) {
@@ -91,10 +109,7 @@ static int index_parse(const char *json_src, warp_index_t *idx) {
      * that signature as one of its own fields. */
     size_t sig_len = 0;
     char *sig = read_file(INDEX_SIG_CACHE, &sig_len);
-    if (sig) {
-        while (sig_len > 0 && (sig[sig_len-1] == '\n' || sig[sig_len-1] == '\r' || sig[sig_len-1] == ' '))
-            sig[--sig_len] = '\0';
-    }
+    if (sig) trim_sig(sig);
     if (sig && *sig) {
         if (warp_verify_index_sig(json_src, sig) != WARP_OK) {
             warp_err("Index signature verification failed!");

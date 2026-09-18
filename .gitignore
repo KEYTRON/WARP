@@ -1,6 +1,10 @@
 warp
 src/*.o
 *.warp
+# local index/packaging scratch (the real index lives in K1OS:packages)
+/index.json
+/index.json.sig
+/pack_temp/
 /build
 /dist
 /tmp
