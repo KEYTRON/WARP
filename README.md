@@ -125,8 +125,11 @@ For the deltas to pay off the archives must compress reproducibly — pack them
 with `gzip -n --rsyncable` (as `tools/make-package.sh` and `make-index.py` do);
 a plain `gzip` scrambles the whole stream after the first changed byte.
 
-Typical numbers: a 2 MiB archive with 50 KiB changed → 110 KiB delta; the
-`warp` binary from one release to the next → ~3 % of the full archive.
+Typical numbers from the test suite: a 2 MiB archive with 50 KiB changed →
+~100 KiB delta. Deltas only pay off for archives that are large relative to
+the change — a 40 KiB archive whose code was mostly rewritten (warp 0.3.3 →
+0.4.0) saves nothing, so `make-index.py` does not list deltas that are 90 % or
+more of the full archive.
 
 ## Dependencies
 
