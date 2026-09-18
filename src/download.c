@@ -100,18 +100,21 @@ int warp_download(const char *url, const char *dest_path, warp_dl_opts_t *opts) 
     return rc;
 }
 
-int warp_download_pkg(const char *orig_url, const char *dest_path, warp_dl_opts_t *opts) {
-    const char *filename = strrchr(orig_url, '/');
-    if (filename) filename++; else filename = orig_url;
+int warp_download_pkg(const char *url, const warp_repo_t *repo, const char *dest_path, warp_dl_opts_t *opts) {
+    const char *filename = strrchr(url, '/');
+    if (filename) filename++; else filename = url;
 
-    for (int i = 0; i < WARP_INDEX_MIRRORS; i++) {
-        char try_url[512];
-        snprintf(try_url, sizeof(try_url), "%s/%s", g_warp_mirrors[i], filename);
+    if (url[0] && strncmp(url, "http", 4) == 0) {
+        warp_info("Downloading %s", url);
+        if (warp_download(url, dest_path, opts) == WARP_OK) return WARP_OK;
+    }
+    if (!repo) return WARP_ERR_NET;
+    for (int i = 0; i < repo->mirror_count; i++) {
+        char try_url[WARP_MAX_URL + 300];
+        snprintf(try_url, sizeof(try_url), "%s/%s", repo->mirrors[i], filename);
+        if (strcmp(try_url, url) == 0) continue;   /* already tried as published */
         warp_info("Trying mirror %d: %s", i + 1, try_url);
-        int rc = warp_download(try_url, dest_path, opts);
-        if (rc == WARP_OK) {
-            return WARP_OK;
-        }
+        if (warp_download(try_url, dest_path, opts) == WARP_OK) return WARP_OK;
     }
     return WARP_ERR_NET;
 }

@@ -6,7 +6,7 @@
 #include <sys/types.h>
 
 /* ── version & paths ─────────────────────────────────────────── */
-#define WARP_VERSION     "0.3.3"
+#define WARP_VERSION     "0.4.0"
 #define WARP_STORE_DIR   "/var/lib/warp"
 #define WARP_INDEX_MIRRORS 3
 extern const char *g_warp_mirrors[WARP_INDEX_MIRRORS];
@@ -59,7 +59,43 @@ typedef struct {
     int    bins_count;
 } warp_manifest_t;
 
+/* ── repositories ────────────────────────────────────────────── */
+#define WARP_DEFAULT_REPO "k1os"
+#define WARP_REPOS_CONF   WARP_STORE_DIR "/repos.json"
+#define WARP_REPOS_DIR    WARP_STORE_DIR "/repos"
+#define WARP_MAX_REPOS    16
+#define WARP_MAX_MIRRORS  4
+#define WARP_REPO_NAME    64
+
+typedef struct {
+    char    name[WARP_REPO_NAME];
+    char    mirrors[WARP_MAX_MIRRORS][WARP_MAX_URL];
+    int     mirror_count;
+    uint8_t pubkey[32];       /* Ed25519 key that must sign this repo's index */
+    int     enabled;
+    int     builtin;          /* the compiled-in k1os repository */
+} warp_repo_t;
+
 /* ── index entry ─────────────────────────────────────────────── */
+#define WARP_MAX_DELTAS  8
+#define WARP_MAX_ENTRY_DEPS 16
+
+/* A delta that rebuilds this version's archive from an older one. */
+typedef struct {
+    char   from_version[WARP_MAX_NAME];
+    char   from_sha256[WARP_SHA256_HEX];   /* sha256 of the old archive */
+    char   url[WARP_MAX_URL];
+    char   sha256[WARP_SHA256_HEX];        /* sha256 of the delta file */
+    size_t size;
+} warp_delta_ref_t;
+
+/* A dependency pinned by the signed index — never taken from the archive. */
+typedef struct {
+    char   name[WARP_MAX_NAME];
+    char   version[WARP_MAX_NAME];
+    char   repo[WARP_REPO_NAME];           /* "" = same repository */
+} warp_dep_ref_t;
+
 typedef struct {
     char   name[WARP_MAX_NAME];
     char   version[WARP_MAX_NAME];
@@ -67,6 +103,11 @@ typedef struct {
     char   sha256[WARP_SHA256_HEX];
     char   url[WARP_MAX_URL];
     size_t size;
+    char   repo[WARP_REPO_NAME];
+    warp_delta_ref_t deltas[WARP_MAX_DELTAS];
+    int    delta_count;
+    warp_dep_ref_t   deps[WARP_MAX_ENTRY_DEPS];
+    int    dep_count;
 } warp_pkg_entry_t;
 
 typedef struct {
@@ -76,6 +117,8 @@ typedef struct {
     char              timestamp[32];
     char              signature[128];
     char              peer_list_url[WARP_MAX_URL];  /* optional, from index.json */
+    warp_repo_t       repos[WARP_MAX_REPOS];        /* repositories consulted */
+    int               repo_count;
 } warp_index_t;
 
 /* ── P2P peer ────────────────────────────────────────────────── */
@@ -116,6 +159,7 @@ int  warp_sha256_file(const char *path, char out_hex[WARP_SHA256_HEX]);
 int  warp_sha256_buf(const uint8_t *buf, size_t len, char out_hex[WARP_SHA256_HEX]);
 int  warp_keygen(const char *privkey_path, const char *pubkey_path);
 int  warp_verify_index_sig(const char *data, const char *sig_b64);
+int  warp_verify_sig_with_key(const char *data, const char *sig_b64, const uint8_t pubkey[32]);
 int  warp_ed25519_verify(const uint8_t *msg, size_t msg_len,
                           const uint8_t sig[64],
                           const uint8_t pubkey[32]);
@@ -158,8 +202,20 @@ typedef struct {
 } warp_dl_opts_t;
 
 int   warp_download(const char *url, const char *dest_path, warp_dl_opts_t *opts);
-int   warp_download_pkg(const char *orig_url, const char *dest_path, warp_dl_opts_t *opts);
+/* Try `url` as published, then the same file name on each of the repository's mirrors. */
+int   warp_download_pkg(const char *url, const warp_repo_t *repo, const char *dest_path, warp_dl_opts_t *opts);
 char *warp_download_str(const char *url);
+
+/* ── repo.h (inline) ─────────────────────────────────────────── */
+int  repos_load(warp_repo_t *out, int *count);
+int  repos_save(const warp_repo_t *repos, int count);
+const warp_repo_t *repos_find(const warp_repo_t *repos, int count, const char *name);
+void repo_cache_dir(const warp_repo_t *r, char *out, size_t cap);
+
+/* ── delta.h (inline) ────────────────────────────────────────── */
+int  delta_make(const char *old_path, const char *new_path, const char *out_path);
+int  delta_apply(const char *old_path, const char *delta_path, const char *out_path,
+                 const char *expected_new_sha, char out_sha[WARP_SHA256_HEX]);
 
 /* ── store.h (inline) ────────────────────────────────────────── */
 int  store_init(void);
@@ -177,6 +233,7 @@ int  index_search(const warp_index_t *idx, const char *query,
                   warp_pkg_entry_t **results, int *count);
 int  index_find(const warp_index_t *idx, const char *name,
                 warp_pkg_entry_t *out);
+const warp_repo_t *index_repo_of(const warp_index_t *idx, const warp_pkg_entry_t *e);
 void index_free(warp_index_t *idx);
 
 /* ── p2p.h (inline) ──────────────────────────────────────────── */
@@ -204,6 +261,10 @@ int cmd_sign      (int argc, char **argv);
 int cmd_pack      (int argc, char **argv);
 int cmd_seed      (int argc, char **argv);
 int cmd_volunteer (int argc, char **argv);
+int cmd_upgrade   (int argc, char **argv);
+int cmd_repo      (int argc, char **argv);
+int cmd_delta     (int argc, char **argv);
+int cmd_delta_apply(int argc, char **argv);
 
 /* ── utils ───────────────────────────────────────────────────── */
 #define WARP_RED    "\033[0;31m"

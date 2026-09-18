@@ -1,0 +1,32 @@
+name: WARP Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: [self-hosted, k1lab, warp]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: make -s clean all && ./warp --version
+
+      - name: Delta round-trip
+        run: sh tests/delta-roundtrip.sh
+
+      - name: Pull K1OS image
+        run: docker pull ghcr.io/keytron/k1os:latest
+
+      # The runner is a container using the host's Docker daemon, so bind
+      # mounts must use a path shared with the host: /var/tmp/k1lab is mounted
+      # into the runner at the same path (see K1OS ci/runner/docker-compose.yml).
+      - name: Custom repository + delta upgrade (end to end, in K1OS)
+        env:
+          E2E_TMPDIR: /var/tmp/k1lab
+        run: mkdir -p "$E2E_TMPDIR" && sh tests/e2e-delta-upgrade.sh

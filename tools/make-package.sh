@@ -16,5 +16,8 @@ make -s
 mkdir -p "$STAGE/files/bin" "$OUT"
 install -m755 warp "$STAGE/files/bin/warp"
 printf '{"name": "warp", "version": "%s", "install_bins": ["bin/warp"]}\n' "$VERSION" > "$STAGE/manifest.json"
-tar -C "$STAGE" --owner=0 --group=0 --numeric-owner -czf "$OUT/warp-$VERSION-$ARCH.warp" manifest.json files
+# --rsyncable keeps unchanged regions byte-identical between releases so
+# `warp delta` can reuse them; -n drops the timestamp for reproducibility.
+tar -C "$STAGE" --owner=0 --group=0 --numeric-owner --mtime='2026-01-01 00:00:00' \
+    -I 'gzip -n --rsyncable' -cf "$OUT/warp-$VERSION-$ARCH.warp" manifest.json files
 sha256sum "$OUT/warp-$VERSION-$ARCH.warp"

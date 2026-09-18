@@ -11,7 +11,7 @@
  * Generated with: warp keygen
  * The matching private key never lives in this repo — it is kept
  * out-of-tree and used only by `warp sign` when publishing an index. */
-static const uint8_t WARP_MASTER_PUBKEY[32] = {
+const uint8_t WARP_MASTER_PUBKEY[32] = {
     0xe3,0xda,0x01,0x79,0xff,0xb4,0x0f,0xfc,
     0xe2,0x01,0x77,0xe9,0x09,0x55,0x43,0xd8,
     0x43,0x51,0x88,0x2d,0x93,0x0b,0x3e,0x2f,
@@ -231,22 +231,20 @@ int warp_sign_file(const char *path, const char *privkey_hex_path, char out_b64[
 /* ── verify a signature against the embedded master public key ──
  * Used for detached signatures (e.g. index.json + index.json.sig):
  * `data`/`data_len` is the exact byte range that was signed. */
-int warp_verify_index_sig(const char *data, const char *sig_b64) {
+int warp_verify_sig_with_key(const char *data, const char *sig_b64, const uint8_t pubkey[32]) {
 #ifdef WARP_SKIP_SIG_VERIFY
-    (void)data; (void)sig_b64;
+    (void)data; (void)sig_b64; (void)pubkey;
     warp_warn("Signature verification disabled at build time (WARP_SKIP_SIG_VERIFY) — do not ship this build");
     return WARP_OK;
 #else
-    /* A zeroed key means this build was never given a real trust root.
-     * That must never be silently treated as "verification passed" —
-     * a prior regression did exactly that and shipped an unsigned,
-     * unauthenticated index for months. Fail closed instead. */
+    /* A zeroed key means no real trust root. That must never be silently
+     * treated as "verification passed" — a prior regression did exactly
+     * that and shipped an unsigned index for months. Fail closed. */
     int zeroes = 1;
-    for (int i = 0; i < 32; i++) if (WARP_MASTER_PUBKEY[i]) { zeroes = 0; break; }
+    for (int i = 0; i < 32; i++) if (pubkey[i]) { zeroes = 0; break; }
     if (zeroes) {
-        warp_err("No master public key embedded in this build of warp");
-        warp_err("Run 'warp keygen', embed the printed public key into src/crypto.c, and rebuild");
-        warp_err("(or build with -DWARP_SKIP_SIG_VERIFY for local testing only)");
+        warp_err("No public key for this repository — refusing to verify its index");
+        warp_err("(builds may define WARP_SKIP_SIG_VERIFY for local testing only)");
         return WARP_ERR_SIG;
     }
 
@@ -257,10 +255,12 @@ int warp_verify_index_sig(const char *data, const char *sig_b64) {
     if (warp_base64_decode(sig_b64, sig, &sig_len) != WARP_OK || sig_len != 64)
         return WARP_ERR_SIG;
 
-    return warp_ed25519_verify(
-        (const uint8_t *)data, strlen(data),
-        sig, WARP_MASTER_PUBKEY);
+    return warp_ed25519_verify((const uint8_t *)data, strlen(data), sig, pubkey);
 #endif
+}
+
+int warp_verify_index_sig(const char *data, const char *sig_b64) {
+    return warp_verify_sig_with_key(data, sig_b64, WARP_MASTER_PUBKEY);
 }
 
 /* ── keygen: generate Ed25519 keypair ────────────────────────── */

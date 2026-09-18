@@ -6,107 +6,104 @@
 #include <sys/stat.h>
 #include "warp.h"
 
-/* ── warp install <pkg> ──────────────────────────────────────── */
-int cmd_install(int argc, char **argv) {
-    if (argc < 1) { warp_err("Usage: warp install <package>"); return 1; }
-    const char *name = argv[0];
+/* ── shared install machinery ────────────────────────────────── */
 
-    if (store_init() != WARP_OK) return 1;
-
-    /* Check already installed */
-    warp_installed_t info;
-    if (store_is_installed(name, &info)) {
-        warp_warn("%s is already installed (version %s)", name, info.version);
-        printf("  Use 'warp rollback %s' to revert to previous version.\n", name);
-        return 0;
-    }
-
-    /* Load index */
-    warp_index_t idx;
-    if (index_load(&idx, 0) != WARP_OK) {
-        warp_err("Cannot load package index");
-        return 1;
-    }
-
-    warp_pkg_entry_t entry;
-    if (index_find(&idx, name, &entry) != WARP_OK) {
-        warp_err("Package not found: %s", name);
-        warp_info("Try: warp search %s", name);
-        index_free(&idx);
-        return 1;
-    }
-    /* Copy before index_free() wipes the struct (peer_list_url lives
-     * inside warp_index_t, not behind a pointer we could dangle). */
-    char peer_list_url[WARP_MAX_URL];
-    strncpy(peer_list_url, idx.peer_list_url, sizeof(peer_list_url)-1);
-    peer_list_url[sizeof(peer_list_url)-1] = '\0';
-    index_free(&idx);
-
-    /* An unhashed entry can't be verified after download — refuse it
-     * outright instead of installing on trust alone. */
-    if (!entry.sha256[0]) {
-        warp_err("No SHA256 published for '%s' in the index", name);
-        warp_err("Refusing to install a package whose integrity can't be verified");
-        return 1;
-    }
-
-    printf("\n  " WARP_BOLD "%s" WARP_RESET " %s\n", entry.name, entry.version);
-    if (entry.description[0])
-        printf("  %s\n", entry.description);
-    if (entry.size > 0)
-        printf("  Size: %.1f KB\n\n", (double)entry.size / 1024.0);
-
-    /* Download to temp file — try P2P first, fall back to direct */
-    char tmp_path[512];
-    snprintf(tmp_path, sizeof(tmp_path), "/tmp/warp-%s.warp", name);
-
-    int downloaded_ok = 0;
-
-    if (peer_list_url[0]) {
+/* Fetch the archive for `entry` into `tmp_path`: P2P first, then the
+ * published URL and the repository's mirrors. Returns WARP_OK only if the
+ * bytes hash to entry->sha256. */
+static int fetch_archive(const warp_pkg_entry_t *entry, const warp_repo_t *repo,
+                         const char *peer_list_url, const char *tmp_path) {
+    if (peer_list_url && peer_list_url[0]) {
         warp_peer_list_t peers;
         if (p2p_load_peers(&peers, peer_list_url) == WARP_OK && peers.count > 0) {
             warp_info("Found %d peer(s) — trying P2P download...", peers.count);
-            if (p2p_download(entry.name, entry.sha256, tmp_path, &peers) == WARP_OK) {
-                downloaded_ok = 1;   /* SHA256 already verified inside p2p_download */
-            } else {
-                warp_warn("P2P failed — falling back to direct download");
-            }
+            if (p2p_download(entry->name, entry->sha256, tmp_path, &peers) == WARP_OK)
+                return WARP_OK;   /* SHA256 already verified inside p2p_download */
+            warp_warn("P2P failed — falling back to direct download");
         } else {
             warp_warn("No peers available — downloading directly");
         }
     }
 
     warp_dl_opts_t dl = { .show_progress = 1 };
-    if (!downloaded_ok) {
-        if (warp_download_pkg(entry.url, tmp_path, &dl) != WARP_OK) {
-            warp_err("Download failed");
-            return 1;
-        }
-
-        /* Verify SHA256 from direct download */
-        warp_info("Verifying integrity...");
-        if (strcmp(dl.computed_sha256, entry.sha256) != 0) {
-            warp_err("SHA256 mismatch!");
-            warp_err("  Expected: %s", entry.sha256);
-            warp_err("  Got:      %s", dl.computed_sha256);
-            remove(tmp_path);
-            return 1;
-        }
+    if (warp_download_pkg(entry->url, repo, tmp_path, &dl) != WARP_OK) {
+        warp_err("Download failed");
+        return WARP_ERR_NET;
     }
-    warp_ok("SHA256 verified");
+    warp_info("Verifying integrity...");
+    if (strcmp(dl.computed_sha256, entry->sha256) != 0) {
+        warp_err("SHA256 mismatch!");
+        warp_err("  Expected: %s", entry->sha256);
+        warp_err("  Got:      %s", dl.computed_sha256);
+        remove(tmp_path);
+        return WARP_ERR_HASH;
+    }
+    return WARP_OK;
+}
 
-    /* Parse manifest from archive */
-    char manifest_tmp[512];
-    snprintf(manifest_tmp, sizeof(manifest_tmp), "/tmp/warp-%s-manifest.json", name);
-    char cmd[1024];
+/* Rebuild the new archive from an installed version plus a published delta.
+ * Returns WARP_OK with the archive at tmp_path (sha256 == entry->sha256),
+ * or an error so the caller can fall back to a full download. */
+static int fetch_via_delta(const warp_pkg_entry_t *entry, const warp_repo_t *repo,
+                           const warp_installed_t *installed, const char *tmp_path) {
+    char sha_path[600], old_archive[600];
+    snprintf(sha_path,    sizeof(sha_path),    "%s/sha256",       installed->store_path);
+    snprintf(old_archive, sizeof(old_archive), "%s/package.warp", installed->store_path);
+    size_t n = 0;
+    char *old_sha = read_file(sha_path, &n);
+    if (!old_sha || !path_exists(old_archive)) { free(old_sha); return WARP_ERR_NOENT; }
+    old_sha[strcspn(old_sha, "\r\n")] = '\0';
+
+    const warp_delta_ref_t *ref = NULL;
+    for (int i = 0; i < entry->delta_count; i++)
+        if (strcmp(entry->deltas[i].from_sha256, old_sha) == 0) { ref = &entry->deltas[i]; break; }
+    free(old_sha);
+    if (!ref) return WARP_ERR_NOENT;
+
+    printf("  Delta available: %.1f KB instead of %.1f KB (%.0f%% less)\n",
+           (double)ref->size / 1024.0, (double)entry->size / 1024.0,
+           entry->size ? 100.0 * (1.0 - (double)ref->size / (double)entry->size) : 0.0);
+
+    char delta_tmp[600];
+    snprintf(delta_tmp, sizeof(delta_tmp), "%s.delta", tmp_path);
+    warp_dl_opts_t dl = { .show_progress = 1 };
+    if (warp_download_pkg(ref->url, repo, delta_tmp, &dl) != WARP_OK) {
+        warp_warn("Delta download failed");
+        return WARP_ERR_NET;
+    }
+    if (strcmp(dl.computed_sha256, ref->sha256) != 0) {
+        warp_warn("Delta SHA256 mismatch — ignoring it");
+        remove(delta_tmp);
+        return WARP_ERR_HASH;
+    }
+
+    char out_sha[WARP_SHA256_HEX];
+    int rc = delta_apply(old_archive, delta_tmp, tmp_path, entry->sha256, out_sha);
+    remove(delta_tmp);
+    if (rc != WARP_OK) return rc;
+    if (strcmp(out_sha, entry->sha256) != 0) {
+        warp_warn("Rebuilt archive does not match the index — falling back to full download");
+        remove(tmp_path);
+        return WARP_ERR_HASH;
+    }
+    warp_ok("Archive rebuilt from delta, SHA256 verified");
+    return WARP_OK;
+}
+
+/* Extract the manifest, add the (already verified) archive to the store
+ * and activate it. */
+static int install_archive(const warp_pkg_entry_t *entry, const char *tmp_path) {
+    char manifest_tmp[600];
+    snprintf(manifest_tmp, sizeof(manifest_tmp), "/tmp/warp-%s-manifest.json", entry->name);
+    char cmd[1400];
     snprintf(cmd, sizeof(cmd), "tar -xzf %s -O manifest.json > %s 2>/dev/null",
              tmp_path, manifest_tmp);
     system(cmd);
 
     warp_manifest_t manifest;
     memset(&manifest, 0, sizeof(manifest));
-    strncpy(manifest.name,    name,          WARP_MAX_NAME-1);
-    strncpy(manifest.version, entry.version, WARP_MAX_NAME-1);
+    strncpy(manifest.name,    entry->name,    WARP_MAX_NAME-1);
+    strncpy(manifest.version, entry->version, WARP_MAX_NAME-1);
 
     size_t mlen;
     char *ms = read_file(manifest_tmp, &mlen);
@@ -114,16 +111,47 @@ int cmd_install(int argc, char **argv) {
         json_t *jm = json_parse(ms);
         free(ms);
         if (jm) {
-            const char *bins_key = "install_bins";
-            json_t *bins = json_get(jm, bins_key);
+            /* The signed index is authoritative; a manifest that claims to be
+             * something else means the archive is not what the index promised
+             * (or the publisher mislabelled it) — either way, refuse. */
+            json_t *jn = json_get(jm, "name");
+            json_t *jv = json_get(jm, "version");
+            if ((jn && jn->type == JSON_STRING && strcmp(jn->v.s, entry->name) != 0) ||
+                (jv && jv->type == JSON_STRING && strcmp(jv->v.s, entry->version) != 0)) {
+                warp_err("Archive manifest says %s %s, index says %s %s — refusing",
+                         jn && jn->type == JSON_STRING ? jn->v.s : "?",
+                         jv && jv->type == JSON_STRING ? jv->v.s : "?",
+                         entry->name, entry->version);
+                json_free(jm);
+                remove(tmp_path);
+                return WARP_ERR_SIG;
+            }
+            json_t *jd = json_get(jm, "deps");
+            if (jd && jd->type == JSON_ARRAY) {
+                for (int i = 0; i < jd->v.arr.count; i++) {
+                    json_t *d = jd->v.arr.items[i];
+                    if (!d || d->type != JSON_STRING) continue;
+                    char dep[WARP_MAX_NAME];
+                    strncpy(dep, d->v.s, sizeof(dep) - 1);
+                    dep[sizeof(dep) - 1] = '\0';
+                    dep[strcspn(dep, "@=<>~ ")] = '\0';        /* drop any version qualifier */
+                    int known = 0;
+                    for (int k = 0; k < entry->dep_count && !known; k++)
+                        known = strcmp(entry->deps[k].name, dep) == 0;
+                    if (!known) {
+                        warp_err("Archive manifest depends on '%s' but the index does not list it — refusing", dep);
+                        json_free(jm);
+                        remove(tmp_path);
+                        return WARP_ERR_SIG;
+                    }
+                }
+            }
+            json_t *bins = json_get(jm, "install_bins");
             if (bins && bins->type == JSON_ARRAY) {
-                manifest.bins_count = 0;
                 for (int i = 0; i < bins->v.arr.count && i < WARP_MAX_BINS; i++) {
                     json_t *b = bins->v.arr.items[i];
-                    if (b && b->type == JSON_STRING) {
-                        strncpy(manifest.install_bins[manifest.bins_count++],
-                                b->v.s, WARP_MAX_NAME-1);
-                    }
+                    if (b && b->type == JSON_STRING)
+                        strncpy(manifest.install_bins[manifest.bins_count++], b->v.s, WARP_MAX_NAME-1);
                 }
             }
             json_free(jm);
@@ -131,45 +159,288 @@ int cmd_install(int argc, char **argv) {
     }
     remove(manifest_tmp);
 
-    /* Add to store */
     char hash12[13];
-    strncpy(hash12, dl.computed_sha256, 12);
+    strncpy(hash12, entry->sha256, 12);
     hash12[12] = '\0';
 
     warp_info("Installing to store...");
-    if (store_add(&manifest, tmp_path, dl.computed_sha256) != WARP_OK) {
+    if (store_add(&manifest, tmp_path, entry->sha256) != WARP_OK) {
         warp_err("Failed to add to store");
         remove(tmp_path);
-        return 1;
+        return WARP_ERR_IO;
     }
     remove(tmp_path);
 
-    /* Activate */
-    if (store_activate(name, hash12) != WARP_OK) {
+    if (store_activate(entry->name, hash12) != WARP_OK) {
         warp_err("Failed to activate package");
+        return WARP_ERR_IO;
+    }
+    return WARP_OK;
+}
+
+static void announce(const warp_pkg_entry_t *entry, const char *peer_list_url) {
+    const char *tracker = (peer_list_url && peer_list_url[0]) ? peer_list_url : WARP_TRACKER_URL;
+    if (!tracker[0]) return;
+    /* Tracker announce base should not include dashboard or peer-list paths. */
+    char announce_url[WARP_MAX_URL];
+    snprintf(announce_url, sizeof(announce_url), "%s", tracker);
+    char *tail = strstr(announce_url, "/dashboard");
+    if (tail) *tail = '\0';
+    tail = strstr(announce_url, "/peers");
+    if (tail) *tail = '\0';
+    if (p2p_announce(announce_url, entry->name, entry->sha256, WARP_PEER_PORT, 0) == WARP_OK)
+        warp_info("Announced to tracker — now seeding %s", entry->name);
+}
+
+static void print_entry_header(const warp_pkg_entry_t *entry) {
+    printf("\n  " WARP_BOLD "%s" WARP_RESET " %s  [%s]\n", entry->name, entry->version, entry->repo);
+    if (entry->description[0]) printf("  %s\n", entry->description);
+    if (entry->size > 0) printf("  Size: %.1f KB\n\n", (double)entry->size / 1024.0);
+}
+
+/* Install (or upgrade to) `entry`. `installed` is the currently active
+ * version when upgrading, NULL for a fresh install. */
+static int install_entry(const warp_index_t *idx, const warp_pkg_entry_t *entry,
+                         const warp_installed_t *installed) {
+    /* An unhashed entry can't be verified after download — refuse it
+     * outright instead of installing on trust alone. */
+    if (!entry->sha256[0]) {
+        warp_err("No SHA256 published for '%s' in the index", entry->name);
+        warp_err("Refusing to install a package whose integrity can't be verified");
+        return WARP_ERR_SIG;
+    }
+    const warp_repo_t *repo = index_repo_of(idx, entry);
+    print_entry_header(entry);
+
+    char tmp_path[512];
+    snprintf(tmp_path, sizeof(tmp_path), "/tmp/warp-%s.warp", entry->name);
+
+    int rc = WARP_ERR_NOENT;
+    if (installed && entry->delta_count > 0)
+        rc = fetch_via_delta(entry, repo, installed, tmp_path);
+    if (rc != WARP_OK)
+        rc = fetch_archive(entry, repo, idx->peer_list_url, tmp_path);
+    if (rc != WARP_OK) return rc;
+    warp_ok("SHA256 verified");
+
+    rc = install_archive(entry, tmp_path);
+    if (rc != WARP_OK) return rc;
+
+    warp_ok("%s: %s %s", installed ? "Upgraded" : "Installed", entry->name, entry->version);
+    announce(entry, idx->peer_list_url);
+    return WARP_OK;
+}
+
+/* ── warp install <pkg> ──────────────────────────────────────── */
+int cmd_install(int argc, char **argv) {
+    if (argc < 1) { warp_err("Usage: warp install <package>"); return 1; }
+    const char *name = argv[0];
+
+    if (store_init() != WARP_OK) return 1;
+
+    warp_installed_t info;
+    if (store_is_installed(name, &info)) {
+        warp_warn("%s is already installed (version %s)", name, info.version);
+        printf("  Use 'warp upgrade %s' to move to the latest version,\n", name);
+        printf("  or 'warp rollback %s' to revert to the previous one.\n", name);
+        return 0;
+    }
+
+    warp_index_t idx;
+    if (index_load(&idx, 0) != WARP_OK) {
+        warp_err("Cannot load package index");
+        return 1;
+    }
+    warp_pkg_entry_t entry;
+    if (index_find(&idx, name, &entry) != WARP_OK) {
+        warp_err("Package not found: %s", name);
+        warp_info("Try: warp search %s", name);
+        index_free(&idx);
+        return 1;
+    }
+    int rc = install_entry(&idx, &entry, NULL);
+    index_free(&idx);
+    return rc == WARP_OK ? 0 : 1;
+}
+
+/* ── warp upgrade [pkg...] ───────────────────────────────────── */
+static int installed_sha(const warp_installed_t *inst, char out[WARP_SHA256_HEX]) {
+    char sha_path[600];
+    snprintf(sha_path, sizeof(sha_path), "%s/sha256", inst->store_path);
+    size_t n = 0;
+    char *s = read_file(sha_path, &n);
+    if (!s) return WARP_ERR_NOENT;
+    s[strcspn(s, "\r\n")] = '\0';
+    strncpy(out, s, WARP_SHA256_HEX - 1);
+    out[WARP_SHA256_HEX - 1] = '\0';
+    free(s);
+    return WARP_OK;
+}
+
+int cmd_upgrade(int argc, char **argv) {
+    if (store_init() != WARP_OK) return 1;
+
+    warp_installed_t *list;
+    int count;
+    if (store_list(&list, &count) != WARP_OK) return 1;
+    if (count == 0) {
+        printf("  No packages installed.\n");
+        return 0;
+    }
+
+    warp_index_t idx;
+    if (index_load(&idx, 1) != WARP_OK) {
+        warp_err("Cannot load package index");
+        store_free_list(list, count);
         return 1;
     }
 
-    warp_ok("Installed: %s %s", name, entry.version);
+    int failed = 0, upgraded = 0, checked = 0;
+    for (int i = 0; i < count; i++) {
+        if (argc > 0) {
+            int wanted = 0;
+            for (int a = 0; a < argc; a++) if (strcmp(argv[a], list[i].name) == 0) wanted = 1;
+            if (!wanted) continue;
+        }
+        checked++;
+        warp_pkg_entry_t entry;
+        if (index_find(&idx, list[i].name, &entry) != WARP_OK) {
+            warp_warn("%s: not in any repository, skipping", list[i].name);
+            continue;
+        }
+        char have[WARP_SHA256_HEX] = "";
+        installed_sha(&list[i], have);
+        if (strcmp(have, entry.sha256) == 0) {
+            printf("  %-20s %s is up to date\n", list[i].name, list[i].version);
+            continue;
+        }
+        printf("  %-20s %s -> %s\n", list[i].name, list[i].version, entry.version);
+        if (install_entry(&idx, &entry, &list[i]) == WARP_OK) upgraded++; else failed++;
+    }
+    if (argc > 0 && checked == 0)
+        warp_warn("None of the named packages are installed");
 
-    /* Announce to tracker so others can download from us */
-    if (peer_list_url[0] || WARP_TRACKER_URL[0]) {
-        const char *tracker = peer_list_url[0]
-                              ? peer_list_url : WARP_TRACKER_URL;
-        /* Tracker announce base should not include dashboard or peer-list paths. */
-        char announce_url[WARP_MAX_URL];
-        snprintf(announce_url, sizeof(announce_url), "%s", tracker);
-        /* Remove trailing tracker UI/API suffixes if present */
-        char *tail = strstr(announce_url, "/dashboard");
-        if (tail) *tail = '\0';
-        tail = strstr(announce_url, "/peers");
-        if (tail) *tail = '\0';
+    index_free(&idx);
+    store_free_list(list, count);
+    if (upgraded || failed)
+        printf("\n  %d upgraded, %d failed\n\n", upgraded, failed);
+    return failed ? 1 : 0;
+}
 
-        if (p2p_announce(announce_url, entry.name, entry.sha256, WARP_PEER_PORT, 0) == WARP_OK)
-            warp_info("Announced to tracker — now seeding %s", name);
+/* ── warp repo list|add|remove|enable|disable ────────────────── */
+static void repo_usage(void) {
+    warp_err("Usage: warp repo list");
+    warp_err("       warp repo add <name> <url> --pubkey <hex64> [--mirror <url>]...");
+    warp_err("       warp repo remove|enable|disable <name>");
+}
+
+static int repo_name_ok(const char *n) {
+    if (!*n || strlen(n) >= WARP_REPO_NAME) return 0;
+    for (const char *p = n; *p; p++)
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '-' || *p == '_')) return 0;
+    return 1;
+}
+
+int cmd_repo(int argc, char **argv) {
+    if (argc < 1) { repo_usage(); return 1; }
+    warp_repo_t repos[WARP_MAX_REPOS];
+    int count = 0;
+    repos_load(repos, &count);
+
+    if (strcmp(argv[0], "list") == 0 || strcmp(argv[0], "ls") == 0) {
+        printf("\n  " WARP_BOLD "%-12s %-8s %s" WARP_RESET "\n\n", "Repository", "State", "Mirrors / key");
+        for (int i = 0; i < count; i++) {
+            char key[65];
+            for (int k = 0; k < 32; k++) sprintf(key + 2 * k, "%02x", repos[i].pubkey[k]);
+            printf("  " WARP_CYAN "%-12s" WARP_RESET " %-8s %s%s\n", repos[i].name,
+                   repos[i].enabled ? WARP_GREEN "on" WARP_RESET "      " : WARP_YELLOW "off" WARP_RESET "     ",
+                   repos[i].mirrors[0], repos[i].builtin ? "  (built-in)" : "");
+            for (int m = 1; m < repos[i].mirror_count; m++)
+                printf("  %-12s %-8s %s\n", "", "", repos[i].mirrors[m]);
+            printf("  %-12s %-8s key %.16s...\n", "", "", key);
+        }
+        printf("\n");
+        return 0;
     }
 
-    return 0;
+    if (strcmp(argv[0], "add") == 0) {
+        if (argc < 3) { repo_usage(); return 1; }
+        const char *name = argv[1];
+        if (!repo_name_ok(name)) { warp_err("Repository name must be [a-z0-9_-]"); return 1; }
+        if (repos_find(repos, count, name)) { warp_err("Repository '%s' already exists", name); return 1; }
+        if (count >= WARP_MAX_REPOS) { warp_err("Too many repositories"); return 1; }
+
+        warp_repo_t r;
+        memset(&r, 0, sizeof(r));
+        strncpy(r.name, name, sizeof(r.name) - 1);
+        strncpy(r.mirrors[r.mirror_count++], argv[2], WARP_MAX_URL - 1);
+        r.enabled = 1;
+        int have_key = 0;
+        for (int i = 3; i < argc; i++) {
+            if (strcmp(argv[i], "--pubkey") == 0 && i + 1 < argc) {
+                size_t klen = 0;
+                if (warp_hex_decode(argv[++i], r.pubkey, 32, &klen) != WARP_OK || klen != 32) {
+                    warp_err("--pubkey must be 64 hex characters (Ed25519 public key)");
+                    return 1;
+                }
+                have_key = 1;
+            } else if (strcmp(argv[i], "--pubkey-file") == 0 && i + 1 < argc) {
+                size_t n = 0;
+                char *hex = read_file(argv[++i], &n);
+                size_t klen = 0;
+                if (!hex || warp_hex_decode(hex, r.pubkey, 32, &klen) != WARP_OK || klen != 32) {
+                    warp_err("Cannot read a 32-byte hex public key from %s", argv[i]);
+                    free(hex);
+                    return 1;
+                }
+                free(hex);
+                have_key = 1;
+            } else if (strcmp(argv[i], "--mirror") == 0 && i + 1 < argc) {
+                if (r.mirror_count < WARP_MAX_MIRRORS)
+                    strncpy(r.mirrors[r.mirror_count++], argv[++i], WARP_MAX_URL - 1);
+                else { warp_err("At most %d mirrors per repository", WARP_MAX_MIRRORS); return 1; }
+            } else {
+                repo_usage();
+                return 1;
+            }
+        }
+        if (!have_key) {
+            warp_err("A repository needs the public key its index is signed with (--pubkey <hex>)");
+            warp_err("Unsigned repositories are not supported: every mirror is untrusted by design");
+            return 1;
+        }
+        repos[count++] = r;
+        if (repos_save(repos, count) != WARP_OK) {
+            warp_err("Cannot write %s (Permission denied? Run with sudo)", WARP_REPOS_CONF);
+            return 1;
+        }
+        warp_ok("Added repository '%s' (%d mirror%s)", name, r.mirror_count, r.mirror_count > 1 ? "s" : "");
+        printf("  Run 'warp update' to fetch its index.\n");
+        return 0;
+    }
+
+    if (strcmp(argv[0], "remove") == 0 || strcmp(argv[0], "enable") == 0 || strcmp(argv[0], "disable") == 0) {
+        if (argc < 2) { repo_usage(); return 1; }
+        int at = -1;
+        for (int i = 0; i < count; i++) if (strcmp(repos[i].name, argv[1]) == 0) at = i;
+        if (at < 0) { warp_err("No such repository: %s", argv[1]); return 1; }
+        if (strcmp(argv[0], "remove") == 0) {
+            if (repos[at].builtin) { warp_err("The built-in repository can be disabled but not removed"); return 1; }
+            for (int i = at; i + 1 < count; i++) repos[i] = repos[i + 1];
+            count--;
+        } else {
+            repos[at].enabled = strcmp(argv[0], "enable") == 0;
+        }
+        if (repos_save(repos, count) != WARP_OK) {
+            warp_err("Cannot write %s (Permission denied? Run with sudo)", WARP_REPOS_CONF);
+            return 1;
+        }
+        warp_ok("%s: %s", argv[0], argv[1]);
+        return 0;
+    }
+
+    repo_usage();
+    return 1;
 }
 
 /* ── warp remove <pkg> ───────────────────────────────────────── */

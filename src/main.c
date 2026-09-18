@@ -30,15 +30,19 @@ static void print_help(void) {
         "  " WARP_BOLD "Usage:" WARP_RESET " warp <command> [args]\n\n"
         "  " WARP_BOLD "Commands:" WARP_RESET "\n"
         "    install    <pkg>       Install a package\n"
+        "    upgrade    [pkg...]    Upgrade installed packages (delta when available)\n"
         "    remove     <pkg>       Remove a package\n"
         "    list                   List installed packages\n"
         "    search     <query>     Search available packages\n"
         "    rollback   <pkg>       Revert to previous version\n"
         "    info       <pkg>       Show package details\n"
-        "    update                 Refresh package index\n"
+        "    update                 Refresh package indexes\n"
+        "    repo       list|add|remove|enable|disable   Manage repositories\n"
+        "      add <name> <url> --pubkey <hex> [--mirror <url>]...\n"
         "    keygen     [priv pub]  Generate Ed25519 signing keypair\n"
         "    sign       <file>      Sign a file, writing <file>.sig\n"
         "    pack       <dir>       Create .warp from a directory\n"
+        "    delta      <old> <new> <out>   Build a delta between two archives\n"
         "    seed                   Seed installed packages to peers\n"
         "    volunteer              Volunteer seeding (setup wizard)\n"
         "      --setup              Re-run interactive setup\n"
@@ -49,8 +53,9 @@ static void print_help(void) {
         "  " WARP_BOLD "Examples:" WARP_RESET "\n"
         "    warp search editor\n"
         "    warp install nano\n"
-        "    warp rollback nano\n\n"
-        "  Mirrors: GitHub, GitLab, GitVerse\n"
+        "    warp upgrade\n"
+        "    warp repo add lab https://mirror.example/lab --pubkey <hex>\n\n"
+        "  Repositories: " WARP_REPOS_CONF " (default: k1os via GitHub, GitLab, GitVerse)\n"
         "  Store: " WARP_STORE_DIR "\n\n"
     );
 }
@@ -62,6 +67,10 @@ typedef struct {
 
 static const cmd_t commands[] = {
     { "install",  cmd_install  },
+    { "upgrade",  cmd_upgrade  },
+    { "repo",     cmd_repo     },
+    { "delta",    cmd_delta    },
+    { "delta-apply", cmd_delta_apply },
     { "remove",   cmd_remove   },
     { "rm",       cmd_remove   },
     { "list",     cmd_list     },

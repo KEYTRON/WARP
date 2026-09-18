@@ -38,6 +38,7 @@ def main() -> int:
     ap.add_argument("--warp", default="warp", help="warp binary with the `sign` command")
     ap.add_argument("--peer-list-url", default="https://keytron-prime.org/warp/dashboard")
     ap.add_argument("--keep-old-versions", action="store_true", help="list every archive, not just the newest per package")
+    ap.add_argument("--no-deltas", action="store_true", help="do not build <name>-<old>-to-<new>-<arch>.warpdelta files")
     args = ap.parse_args()
 
     index_path = args.packages_dir / "index.json"
@@ -59,20 +60,49 @@ def main() -> int:
     def vkey(v: str):
         return [int(p) if p.isdigit() else p for p in re.split(r"[.\-]", v)]
 
+    base = args.base_url.rstrip("/")
     packages = {}
     for name, versions in sorted(found.items()):
         versions.sort(key=lambda t: vkey(t[0]))
         chosen = versions if args.keep_old_versions else versions[-1:]
         for version, archive in chosen:
             key = name if len(chosen) == 1 else f"{name}@{version}"
-            packages[key] = {
+            entry = {
                 "version": version,
                 "description": old.get(name, {}).get("description", f"{name} {version} for K1OS"),
                 "sha256": sha256(archive),
                 "size": archive.stat().st_size,
-                "url": f"{args.base_url.rstrip('/')}/{archive.name}",
+                "url": f"{base}/{archive.name}",
             }
-            print(f"{key:<12} {version:<10} {packages[key]['size']:>10} B  {packages[key]['sha256'][:12]}")
+            deps = old.get(name, {}).get("deps")
+            if deps:
+                entry["deps"] = deps
+            # Deltas from every older archive still on the mirror to this one.
+            if not args.no_deltas and version == versions[-1][0]:
+                deltas = []
+                for old_version, old_archive in versions[:-1]:
+                    m = NAME_RE.match(archive.name)
+                    delta = args.packages_dir / f"{name}-{old_version}-to-{version}-{m['arch']}.warpdelta"
+                    if not delta.exists():
+                        subprocess.run([args.warp, "delta", str(old_archive), str(archive), str(delta)],
+                                       check=True, stdout=subprocess.DEVNULL)
+                    dsize = delta.stat().st_size
+                    if dsize >= entry["size"] * 0.9:
+                        print(f"  delta {old_version}->{version} saves nothing ({dsize} B), not listed")
+                        delta.unlink()
+                        continue
+                    deltas.append({
+                        "from_version": old_version,
+                        "from_sha256": sha256(old_archive),
+                        "url": f"{base}/{delta.name}",
+                        "sha256": sha256(delta),
+                        "size": dsize,
+                    })
+                    print(f"  delta {old_version}->{version}: {dsize} B ({100 * dsize / entry['size']:.0f}% of full)")
+                if deltas:
+                    entry["deltas"] = deltas
+            packages[key] = entry
+            print(f"{key:<12} {version:<10} {entry['size']:>10} B  {entry['sha256'][:12]}")
 
     dropped = sorted(set(old) - set(found))
     if dropped:
