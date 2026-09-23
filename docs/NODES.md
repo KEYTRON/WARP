@@ -98,6 +98,6 @@ A node **does not sign** packages on behalf of the repository: otherwise a compr
 ## Stages
 
 1. Rollback protection.
-2. Repository mode: `warp repo init` and `warp publish` instead of an external script, split keys.
+2. Repository mode: `warp repo init` and `warp publish` instead of an external script, split keys. Publishing carries release notes (`--notes`) in the signed index, so a node or mirror cannot swap them.
 3. Node mode: certificates, agreement, sync, checks, renewal, client downloads from nodes.
 4. Namespace delegation (if needed).

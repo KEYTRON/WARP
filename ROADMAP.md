@@ -35,6 +35,7 @@ Design of repositories and nodes: [docs/NODES.md](docs/NODES.md).
 
 ## Repository mode
 - [ ] `warp repo init` and `warp publish` instead of an external script
+- [ ] Release notes when publishing a version (`warp publish --notes`), stored in the signed index
 - [ ] Split keys: root (offline), index and online
 
 ## Node mode
@@ -53,6 +54,7 @@ All packages are built for x86_64 today, and the architecture exists only in the
 ## Next
 - [ ] Dependency resolution on top of the signed index
 - [ ] Package licenses: read before installing (from the index) and after (from the installed package), e.g. `warp license <package>`
+- [ ] What's new in a version: release notes in the signed index, shown by `warp upgrade` and `warp info` before upgrading and by `warp changelog <package>` afterwards
 - [ ] Working K1OS index mirrors on GitLab and GitVerse
 - [ ] zstd compression
 - [ ] Declarative system description (`system.yaml`)
