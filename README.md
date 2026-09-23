@@ -84,6 +84,24 @@ untrusted repository. Repository names match `[a-z0-9_-]`; when two enabled
 repositories publish the same package name, the one listed first wins, and
 `warp install other/pkg` selects a specific one.
 
+`warp update` exits with code 1 when at least one enabled repository could
+not be updated (the signature did not verify or no mirror answered). Packages
+from the other repositories stay available.
+
+### The first repository: `keytron`
+
+The first public repository besides the built-in `k1os` is `keytron` on
+[keytron-prime.org](https://keytron-prime.org). Add it with one command:
+
+```bash
+sudo warp repo add keytron https://keytron-prime.org/packages/keytron --pubkey 53d0a36597b812873cdaa42b11b08592ac3f0998998ccb7e59d6833640f9d883
+sudo warp update
+```
+
+You can check the key against the published
+[`pubkey.hex`](https://keytron-prime.org/packages/keytron/pubkey.hex).
+The signing key of this repository is not stored on the serving host.
+
 ### Publishing your own repository
 
 Any static HTTP host works. Put the `.warp` archives in a directory and run

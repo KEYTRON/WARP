@@ -88,6 +88,8 @@ static const cmd_t commands[] = {
 };
 
 int main(int argc, char **argv) {
+    /* Keep stdout and stderr in order when output goes to a file or a CI log. */
+    setvbuf(stdout, NULL, _IOLBF, 0);
     if (argc < 2) { print_help(); return 0; }
 
     if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0) {

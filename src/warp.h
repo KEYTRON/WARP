@@ -119,6 +119,7 @@ typedef struct {
     char              peer_list_url[WARP_MAX_URL];  /* optional, from index.json */
     warp_repo_t       repos[WARP_MAX_REPOS];        /* repositories consulted */
     int               repo_count;
+    int               refresh_failed;               /* enabled repos whose refresh failed */
 } warp_index_t;
 
 /* ── P2P peer ────────────────────────────────────────────────── */

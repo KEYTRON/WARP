@@ -574,8 +574,15 @@ int cmd_update(int argc, char **argv) {
     if (store_init() != WARP_OK) return 1;
     warp_index_t idx;
     if (index_load(&idx, 1) != WARP_OK) return 1;
+    int failed = idx.refresh_failed;
     warp_ok("Index updated: %d packages available", idx.count);
     index_free(&idx);
+    /* Packages from the repositories that did refresh stay usable, but a
+     * script or CI must still see that some repository was not updated. */
+    if (failed) {
+        warp_err("%d repositor%s could not be updated (see above)", failed, failed == 1 ? "y" : "ies");
+        return 1;
+    }
     return 0;
 }
 

@@ -211,6 +211,7 @@ int index_load(warp_index_t *idx, int force_refresh) {
         if (force_refresh || is_stale(idx_path)) {
             int rc = fetch_and_cache(r);
             if (rc != WARP_OK) {
+                idx->refresh_failed++;
                 if (!path_exists(idx_path)) continue;
                 warp_warn("[%s] Using cached index (fetch failed)", r->name);
             }
