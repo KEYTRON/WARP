@@ -52,6 +52,7 @@ All packages are built for x86_64 today, and the architecture exists only in the
 
 ## Next
 - [ ] Dependency resolution on top of the signed index
+- [ ] Package licenses: read before installing (from the index) and after (from the installed package), e.g. `warp license <package>`
 - [ ] Working K1OS index mirrors on GitLab and GitVerse
 - [ ] zstd compression
 - [ ] Declarative system description (`system.yaml`)
