@@ -44,6 +44,12 @@ Design of repositories and nodes: [docs/NODES.md](docs/NODES.md).
 - [ ] The client downloads from nodes and fails over
 - [ ] Namespace delegation to nodes (if needed)
 
+## Other architectures
+All packages are built for x86_64 today, and the architecture exists only in the archive name.
+- [ ] Architecture in the index: the client picks the build for its own machine
+- [ ] Packages and CI for aarch64 (a runner on a MacBook with Apple Silicon)
+- [ ] riscv64 — once there is real hardware to test on
+
 ## Next
 - [ ] Dependency resolution on top of the signed index
 - [ ] Working K1OS index mirrors on GitLab and GitVerse
