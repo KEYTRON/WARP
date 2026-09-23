@@ -4,6 +4,8 @@ Stage: 0.4.0
 
 Stages go in order: `[x]` is done, `[ ]` is planned. The current stage is the first unfinished one.
 
+Design of repositories and nodes: [docs/NODES.md](docs/NODES.md).
+
 ## The base package manager
 - [x] Install, remove, list and inspect packages
 - [x] Versioned local store with instant rollback
@@ -27,9 +29,23 @@ Stages go in order: `[x]` is done, `[ ]` is planned. The current stage is the fi
 - [x] Delta tests and an e2e install → upgrade → rollback test
 - [x] CI on K1OS, Alpine, AlmaLinux, Arch, Artix, Devuan, Fedora, Ubuntu, Void and Void musl
 
+## Rollback protection
+- [ ] A version number and an expiry date on the index
+- [ ] The client rejects an index older than the one it has seen or an expired one
+
+## Repository mode
+- [ ] `warp repo init` and `warp publish` instead of an external script
+- [ ] Split keys: root (offline), index and online
+
+## Node mode
+- [ ] Node certificates with an expiry date, signed by the repository
+- [ ] Nodes join by agreement of both sides and sync all packages or a share of them
+- [ ] Automatic renewal, availability checks and node revocation
+- [ ] The client downloads from nodes and fails over
+- [ ] Namespace delegation to nodes (if needed)
+
 ## Next
 - [ ] Dependency resolution on top of the signed index
-- [ ] P2P distribution through the tracker in practice
 - [ ] Working K1OS index mirrors on GitLab and GitVerse
 - [ ] zstd compression
 - [ ] Declarative system description (`system.yaml`)
