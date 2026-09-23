@@ -51,9 +51,17 @@ All packages are built for x86_64 today, and the architecture exists only in the
 - [ ] Packages and CI for aarch64 (a runner on a MacBook with Apple Silicon)
 - [ ] riscv64 — once there is real hardware to test on
 
+## Package automation
+- [ ] A recipe per package in a separate repository: where the version comes from, how to verify it (upstream checksum or signature), how to build it, where the license is
+- [ ] A scheduled version watcher (like nvchecker / Anitya) comparing recipes with the index
+- [ ] A new version is built in CI, installed in a container and proposed as a PR with the upstream changes
+- [ ] Vulnerabilities from OSV.dev: a PR for a version with a known CVE is marked urgent
+- [ ] Signing the index stays with a human: automation can never ship a package on its own
+
 ## Next
 - [ ] Dependency resolution on top of the signed index
 - [ ] Package licenses: read before installing (from the index) and after (from the installed package), e.g. `warp license <package>`
+- [ ] Optional package components (e.g. CUDA, ROCm, Vulkan backends): one package, the client installs only the ones matching the hardware, `--with` / `--without` to choose by hand
 - [ ] What's new in a version: release notes in the signed index, shown by `warp upgrade` and `warp info` before upgrading and by `warp changelog <package>` afterwards
 - [ ] Working K1OS index mirrors on GitLab and GitVerse
 - [ ] zstd compression
