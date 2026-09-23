@@ -192,6 +192,11 @@ the top-level `url`/`sha256` are used. `index.json.sig` is the base64 Ed25519
 signature of the raw `index.json` bytes (`warp sign index.json`), not a field
 inside the JSON — a signature cannot cover a document that contains itself.
 
+The optional `peer_list_url` field is this repository's P2P tracker. Without
+it, the repository's packages are fetched only from its mirrors and installs
+are not reported anywhere. The compiled-in tracker `keytron-prime.org/warp`
+is used only for the built-in `k1os`.
+
 ## Tests
 
 ```bash

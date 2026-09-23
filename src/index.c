@@ -148,7 +148,7 @@ static void parse_entry(json_t *pkg, const warp_repo_t *r, warp_pkg_entry_t *e) 
 /* Parse one repository's cached index (re-verifying the cached pair) and
  * append its packages; a name already provided by an earlier repository
  * wins, so repository order is priority order. */
-static int parse_repo(const warp_repo_t *r, warp_index_t *idx) {
+static int parse_repo(warp_repo_t *r, warp_index_t *idx) {
     char idx_path[600], sig_path[600];
     cache_paths(r, idx_path, sizeof(idx_path), sig_path, sizeof(sig_path));
 
@@ -174,8 +174,7 @@ static int parse_repo(const warp_repo_t *r, warp_index_t *idx) {
     }
     if (!idx->timestamp[0])
         strncpy(idx->timestamp, json_str(root, "timestamp", ""), sizeof(idx->timestamp)-1);
-    if (!idx->peer_list_url[0])
-        strncpy(idx->peer_list_url, json_str(root, "peer_list_url", ""), WARP_MAX_URL-1);
+    strncpy(r->peer_list_url, json_str(root, "peer_list_url", ""), WARP_MAX_URL-1);
 
     json_t *pkgs = json_get(root, "packages");
     if (!pkgs || pkgs->type != JSON_OBJECT) {
@@ -204,7 +203,7 @@ int index_load(warp_index_t *idx, int force_refresh) {
 
     int loaded = 0;
     for (int i = 0; i < idx->repo_count; i++) {
-        const warp_repo_t *r = &idx->repos[i];
+        warp_repo_t *r = &idx->repos[i];
         if (!r->enabled) continue;
         char idx_path[600], sig_path[600];
         cache_paths(r, idx_path, sizeof(idx_path), sig_path, sizeof(sig_path));

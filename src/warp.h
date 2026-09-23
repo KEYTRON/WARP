@@ -74,6 +74,7 @@ typedef struct {
     uint8_t pubkey[32];       /* Ed25519 key that must sign this repo's index */
     int     enabled;
     int     builtin;          /* the compiled-in k1os repository */
+    char    peer_list_url[WARP_MAX_URL];  /* from this repo's signed index; empty = no P2P */
 } warp_repo_t;
 
 /* ── index entry ─────────────────────────────────────────────── */
@@ -116,7 +117,6 @@ typedef struct {
     int               capacity;
     char              timestamp[32];
     char              signature[128];
-    char              peer_list_url[WARP_MAX_URL];  /* optional, from index.json */
     warp_repo_t       repos[WARP_MAX_REPOS];        /* repositories consulted */
     int               repo_count;
     int               refresh_failed;               /* enabled repos whose refresh failed */

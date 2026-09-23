@@ -178,8 +178,16 @@ static int install_archive(const warp_pkg_entry_t *entry, const char *tmp_path) 
     return WARP_OK;
 }
 
-static void announce(const warp_pkg_entry_t *entry, const char *peer_list_url) {
-    const char *tracker = (peer_list_url && peer_list_url[0]) ? peer_list_url : WARP_TRACKER_URL;
+/* A repository's own tracker, from its signed index. Only the built-in k1os
+ * repository falls back to the compiled-in tracker: a third-party repository
+ * without a tracker gets no P2P, and its installs are never reported to ours. */
+static const char *repo_tracker(const warp_repo_t *repo) {
+    if (repo->peer_list_url[0]) return repo->peer_list_url;
+    return repo->builtin ? WARP_TRACKER_URL "/dashboard" : "";
+}
+
+static void announce(const warp_pkg_entry_t *entry, const warp_repo_t *repo) {
+    const char *tracker = repo_tracker(repo);
     if (!tracker[0]) return;
     /* Tracker announce base should not include dashboard or peer-list paths. */
     char announce_url[WARP_MAX_URL];
@@ -219,7 +227,7 @@ static int install_entry(const warp_index_t *idx, const warp_pkg_entry_t *entry,
     if (installed && entry->delta_count > 0)
         rc = fetch_via_delta(entry, repo, installed, tmp_path);
     if (rc != WARP_OK)
-        rc = fetch_archive(entry, repo, idx->peer_list_url, tmp_path);
+        rc = fetch_archive(entry, repo, repo_tracker(repo), tmp_path);
     if (rc != WARP_OK) return rc;
     warp_ok("SHA256 verified");
 
@@ -227,7 +235,7 @@ static int install_entry(const warp_index_t *idx, const warp_pkg_entry_t *entry,
     if (rc != WARP_OK) return rc;
 
     warp_ok("%s: %s %s", installed ? "Upgraded" : "Installed", entry->name, entry->version);
-    announce(entry, idx->peer_list_url);
+    announce(entry, repo);
     return WARP_OK;
 }
 
