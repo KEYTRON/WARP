@@ -1,6 +1,6 @@
 # WARP roadmap
 
-Stage: 0.4.0
+Stage: 0.4.1
 
 Stages go in order: `[x]` is done, `[ ]` is planned. The current stage is the first unfinished one.
 
