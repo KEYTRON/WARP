@@ -159,7 +159,9 @@ const char *json_str(json_t *node, const char *key, const char *def) {
 double json_num(json_t *node, const char *key, double def) {
     if (!node) return def;
     json_t *v = key ? json_get(node, key) : node;
-    if (!v || v->type != JSON_NUMBER) return def;
+    if (!v) return def;
+    if (v->type == JSON_BOOL) return v->v.b ? 1.0 : 0.0;   /* "enabled": false must read as 0 */
+    if (v->type != JSON_NUMBER) return def;
     return v->v.n;
 }
 

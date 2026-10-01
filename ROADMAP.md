@@ -47,9 +47,18 @@ Design of repositories and nodes: [docs/NODES.md](docs/NODES.md).
 
 ## Other architectures
 All packages are built for x86_64 today, and the architecture exists only in the archive name.
-- [ ] Architecture in the index: the client picks the build for its own machine
-- [ ] Packages and CI for aarch64 (a runner on a MacBook with Apple Silicon)
+- [x] Platform in the index (`builds` per `<os>-<arch>`): the client takes only the build for its own OS and CPU and never compiles
+- [ ] Packages and CI for aarch64 (WARP itself builds and passes its tests on linux/aarch64 in an OrbStack machine on the MacBook; a runner and published packages are still to do)
 - [ ] riscv64 — once there is real hardware to test on
+
+## Versions side by side (idea from the user, 2026-10-01)
+Today several versions already sit in the store (`store/<name>-<hash12>`), but only one `prev` link exists: rollback toggles between two.
+- [x] Install any version: `warp install name@1.2`, `warp versions name` (installed and available); the index keeps old versions (`name@version`)
+- [x] `warp switch name <version>` to any installed version; rollback walks back through an activation history, not a single slot
+- [x] `warp pin name [version]` / `unpin`: `warp upgrade` leaves a pinned package alone (for a program that needs a version no newer than X, or no older)
+- [x] `warp run name@1.2 -- args`: start a specific version without switching the active one
+- [x] `warp gc`: remove versions that are not active, pinned or in the recent history (the disk is limited)
+- [ ] Different dependents using different versions of a dependency at once (the Nix closure model): needs packages that find their dependencies by store path; after the dependency resolver
 
 ## Package automation
 - [ ] A recipe per package in a separate repository: where the version comes from, how to verify it (upstream checksum or signature), how to build it, where the license is

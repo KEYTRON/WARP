@@ -20,6 +20,15 @@ jobs:
       - name: Delta round-trip
         run: sh tests/delta-roundtrip.sh
 
+      - name: Versions side by side
+        run: sh tests/versions.sh
+
+      - name: Prebuilt packages per platform
+        run: sh tests/multi-platform.sh
+
+      - name: Node, volunteer limits and opt-in statistics
+        run: sh tests/node-stats.sh
+
       - name: Pull K1OS image
         run: docker pull ghcr.io/keytron/k1os:latest
 

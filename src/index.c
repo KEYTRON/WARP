@@ -102,17 +102,16 @@ static int fetch_and_cache(const warp_repo_t *r) {
     return WARP_ERR_NET;
 }
 
-static void parse_entry(json_t *pkg, const warp_repo_t *r, warp_pkg_entry_t *e) {
-    memset(e, 0, sizeof(*e));
-    strncpy(e->name,        pkg->key,                          WARP_MAX_NAME-1);
-    strncpy(e->version,     json_str(pkg, "version",     "?"), WARP_MAX_NAME-1);
-    strncpy(e->description, json_str(pkg, "description", ""),  sizeof(e->description)-1);
-    strncpy(e->sha256,      json_str(pkg, "sha256",      ""),  WARP_SHA256_HEX-1);
-    strncpy(e->url,         json_str(pkg, "url",         ""),  WARP_MAX_URL-1);
-    strncpy(e->repo,        r->name,                           WARP_REPO_NAME-1);
-    e->size = (size_t)json_num(pkg, "size", 0);
+/* The part of an entry that differs per build: version, archive, deltas, deps.
+ * `src` is the build object (or the entry itself for a legacy index);
+ * `top` supplies what a build leaves out. */
+static void parse_build(json_t *src, json_t *top, warp_pkg_entry_t *e) {
+    strncpy(e->version, json_str(src, "version", json_str(top, "version", "?")), WARP_MAX_NAME-1);
+    strncpy(e->sha256,  json_str(src, "sha256", ""), WARP_SHA256_HEX-1);
+    strncpy(e->url,     json_str(src, "url",    ""), WARP_MAX_URL-1);
+    e->size = (size_t)json_num(src, "size", 0);
 
-    json_t *deltas = json_get(pkg, "deltas");
+    json_t *deltas = json_get(src, "deltas");
     if (deltas && deltas->type == JSON_ARRAY) {
         for (int i = 0; i < deltas->v.arr.count && e->delta_count < WARP_MAX_DELTAS; i++) {
             json_t *d = deltas->v.arr.items[i];
@@ -127,7 +126,8 @@ static void parse_entry(json_t *pkg, const warp_repo_t *r, warp_pkg_entry_t *e) 
         }
     }
 
-    json_t *deps = json_get(pkg, "deps");
+    json_t *deps = json_get(src, "deps");
+    if (!deps) deps = json_get(top, "deps");
     if (deps && deps->type == JSON_ARRAY) {
         for (int i = 0; i < deps->v.arr.count && e->dep_count < WARP_MAX_ENTRY_DEPS; i++) {
             json_t *d = deps->v.arr.items[i];
@@ -143,6 +143,45 @@ static void parse_entry(json_t *pkg, const warp_repo_t *r, warp_pkg_entry_t *e) 
             if (dep->name[0]) e->dep_count++;
         }
     }
+}
+
+/* Pick the build made for this machine. Only a build for this very platform
+ * (or an explicit "any" for architecture-independent packages) is used: a
+ * binary for another OS or CPU is never installed, and nothing is built here. */
+static void parse_entry(json_t *pkg, const warp_repo_t *r, warp_pkg_entry_t *e) {
+    memset(e, 0, sizeof(*e));
+    /* "name" is the latest release, "name@1.2" an older one kept for pinning. */
+    const char *at = strchr(pkg->key, '@');
+    size_t nl = at ? (size_t)(at - pkg->key) : strlen(pkg->key);
+    if (nl >= WARP_MAX_NAME) nl = WARP_MAX_NAME - 1;
+    memcpy(e->name, pkg->key, nl);
+    e->versioned = at != NULL;
+    strncpy(e->description, json_str(pkg, "description", ""),  sizeof(e->description)-1);
+    strncpy(e->repo,        r->name,                           WARP_REPO_NAME-1);
+
+    json_t *builds = json_get(pkg, "builds");
+    if (builds && builds->type == JSON_OBJECT) {
+        json_t *mine = json_get(builds, WARP_PLATFORM);
+        if (!mine || mine->type != JSON_OBJECT) mine = json_get(builds, "any");
+        if (mine && mine->type == JSON_OBJECT) {
+            parse_build(mine, pkg, e);
+            return;
+        }
+        for (int i = 0; i < builds->v.arr.count; i++) {
+            json_t *b = builds->v.arr.items[i];
+            if (!b || !b->key) continue;
+            size_t used = strlen(e->available);
+            snprintf(e->available + used, sizeof(e->available) - used, "%s%s", used ? ", " : "", b->key);
+        }
+    } else if (strcmp(WARP_PLATFORM, "linux-x86_64") == 0) {
+        parse_build(pkg, pkg, e);          /* legacy index: the entry is the x86_64 build */
+        return;
+    } else {
+        snprintf(e->available, sizeof(e->available), "linux-x86_64");
+    }
+
+    e->no_build = 1;
+    strncpy(e->version, json_str(pkg, "version", "?"), WARP_MAX_NAME-1);
 }
 
 /* Parse one repository's cached index (re-verifying the cached pair) and
@@ -220,8 +259,10 @@ int index_load(warp_index_t *idx, int force_refresh) {
     return loaded ? WARP_OK : WARP_ERR_NET;
 }
 
-/* `name` or `repo/name`: the latter selects the entry from one repository
- * even when an earlier one publishes the same package name. */
+/* `name`, `repo/name`, `name@version` or `repo/name@version`. A repository
+ * prefix selects the entry from one repository even when an earlier one
+ * publishes the same package name; a version selects that release instead of
+ * the latest. */
 int index_find(const warp_index_t *idx, const char *name, warp_pkg_entry_t *out) {
     const char *slash = strchr(name, '/');
     char repo[64] = "";
@@ -232,12 +273,24 @@ int index_find(const warp_index_t *idx, const char *name, warp_pkg_entry_t *out)
         repo[n] = '\0';
         name = slash + 1;
     }
+    char base[WARP_MAX_NAME];
+    const char *ver = NULL;
+    const char *at = strchr(name, '@');
+    size_t bl = at ? (size_t)(at - name) : strlen(name);
+    if (bl == 0 || bl >= sizeof(base)) return WARP_ERR_NOENT;
+    memcpy(base, name, bl);
+    base[bl] = '\0';
+    if (at) {
+        ver = at + 1;
+        if (!*ver) return WARP_ERR_NOENT;
+    }
     for (int i = 0; i < idx->count; i++) {
-        if (repo[0] && strcmp(idx->entries[i].repo, repo) != 0) continue;
-        if (strcmp(idx->entries[i].name, name) == 0) {
-            if (out) *out = idx->entries[i];
-            return WARP_OK;
-        }
+        const warp_pkg_entry_t *e = &idx->entries[i];
+        if (repo[0] && strcmp(e->repo, repo) != 0) continue;
+        if (strcmp(e->name, base) != 0) continue;
+        if (ver ? strcmp(e->version, ver) != 0 : e->versioned) continue;
+        if (out) *out = *e;
+        return WARP_OK;
     }
     return WARP_ERR_NOENT;
 }
@@ -253,6 +306,7 @@ int index_search(const warp_index_t *idx, const char *query,
     *count = 0;
     for (int i = 0; i < idx->count; i++) {
         const warp_pkg_entry_t *e = &idx->entries[i];
+        if (e->versioned) continue;      /* older releases show up in `warp versions` */
         if (strcasestr(e->name, query) || strcasestr(e->description, query)) {
             (*results)[(*count)++] = *e;
         }
@@ -263,4 +317,13 @@ int index_search(const warp_index_t *idx, const char *query,
 void index_free(warp_index_t *idx) {
     free(idx->entries);
     memset(idx, 0, sizeof(*idx));
+}
+
+/* Part of an archive's name after name-version-: the architecture on Linux (the
+ * names that already exist), `<os>_<arch>` on any other OS. */
+const char *warp_archive_tag(void) {
+    static char tag[64];
+    if (strcmp(WARP_OS, "linux") == 0) snprintf(tag, sizeof(tag), "%s", WARP_ARCH);
+    else                               snprintf(tag, sizeof(tag), "%s_%s", WARP_OS, WARP_ARCH);
+    return tag;
 }

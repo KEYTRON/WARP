@@ -54,7 +54,8 @@ The binary goes to `/usr/local/bin/warp`; set `PREFIX` for another location.
 | `warp install <pkg>` | Install a package (`repo/pkg` to pick a repository explicitly) |
 | `warp upgrade [pkg...]` | Upgrade installed packages, via delta when one is published |
 | `warp remove <pkg>` | Remove a package |
-| `warp rollback <pkg>` | Revert to the previously installed version |
+| `warp rollback <pkg>` | Go one version back through the activation history (repeat for more) |
+| `warp versions` / `switch` / `pin` / `unpin` / `run` / `gc` | Versions side by side, see below |
 | `warp list` / `warp info <pkg>` | Installed packages / details |
 | `warp repo list\|add\|remove\|enable\|disable` | Manage repositories |
 | `warp delta <old> <new> <out>` | Build a binary delta between two archives |
@@ -62,7 +63,86 @@ The binary goes to `/usr/local/bin/warp`; set `PREFIX` for another location.
 | `warp keygen [priv pub]` | Generate an Ed25519 signing keypair |
 | `warp sign <file> [priv]` | Write a detached base64 signature `<file>.sig` |
 | `warp pack <dir>` | Create a `.warp` archive from a directory |
-| `warp seed` / `warp volunteer` | Seed installed packages to peers (P2P transport) |
+| `warp seed` | Run the node: seed installed packages to peers (P2P transport) |
+| `warp volunteer` | Same node, plus cache rarely seeded packages within your limits |
+| `warp stats` | This node and the network: data sent, packages, nodes online, traffic |
+
+## Seeding, volunteer mode and statistics
+
+There is one node process (`warp seed`, service `warp-seed`). Volunteer mode is
+a setting of that node, not a second service, so the two can never fight over
+port 7777.
+
+```bash
+warp volunteer --setup               # interactive: disk, package count, SD-card mode, monthly cap
+warp volunteer --quota 10.46G        # disk for the cache: 10G, 10.46G, 500M or all
+warp volunteer --packages 46         # at most 46 packages (or all)
+warp volunteer --reserve 2G          # always keep 2 GiB of the disk free (default 1G)
+warp volunteer --disable             # back to plain seeding; a running node applies it at once
+```
+
+With limits, the node fills the cache with the least seeded packages first. With
+`--quota all` it takes everything. A running node re-reads its settings when
+`warp volunteer ...` changes them (SIGHUP) and looks for rarely seeded
+packages again every six hours.
+
+`warp stats` shows what this node has done (bytes and packages sent, cache,
+monthly traffic) and the state of the network (nodes online, packages, data
+moved). `warp --help` ends with a one-line summary taken from local files only.
+
+**Anonymous statistics are off until you say yes.** The first interactive
+`warp seed` / `warp volunteer` shows exactly what would be sent and asks
+`[y/N]`; Enter means no. `warp stats --what` shows it again, `warp stats
+--consent` / `--no-stats` change the answer, `--reset-id` makes a new random
+node id. The report carries a random node id, the warp version and
+architecture, whether volunteer mode is on, bytes and packages sent, and how
+many packages the node can seed — no file names, no paths, no package
+contents. Seeding itself still tells the tracker your address, port and the
+names of the packages you seed (peers need that to find you); that is separate
+from the statistics. Network totals are the sum of what consenting nodes
+report and are not verified.
+
+## Versions side by side
+
+Every installed version lives in the store as `store/<name>-<hash12>`; one of
+them is active. Several can sit next to each other, so a program that needs an
+older version (or not yet a newer one) keeps working.
+
+```bash
+warp versions tool            # installed in the store, and published in the index
+warp install tool@1.2         # that release, next to the current one; it becomes active and is pinned
+warp switch tool 2.0          # any installed version, no download
+warp pin tool [1.2]           # `warp upgrade` leaves it alone (a version also switches to it)
+warp unpin tool
+warp rollback tool            # one step back through the activation history; repeat to go further
+warp run tool@1.1 -- args     # run a stored version without switching (--bin <name> picks the program)
+warp gc [--keep N] [--dry-run]   # remove versions that are not active, pinned or among the last N activations
+```
+
+An older release is chosen on purpose, so `warp install tool@1.2` pins it:
+without that the next `warp upgrade` would undo it. A pin follows an explicit
+`switch` or `rollback`. `warp rollback` walks back through every activation,
+not just between the last two. Old releases are installable when the
+repository publishes them: `tools/make-index.py --keep-old-versions` adds a
+`name@version` entry for each release next to the plain `name` (the latest);
+clients that predate this ignore the extra entries. Not covered yet: different
+programs using different versions of the same *dependency* at once (Nix-style
+closures); see the roadmap.
+
+## Platforms: prebuilt packages only
+
+WARP never downloads source and compiles it. Every package is built in CI for
+each platform it supports, and the signed index lists one **build** per
+platform, written `<os>-<arch>`: `linux-x86_64`, `linux-aarch64`,
+`android-aarch64` (Termux), `macos-aarch64`. The client installs only the build
+made for its own OS and CPU (`warp platform` prints it). If a package has no
+build for your platform, `warp install` says so and lists the platforms it has;
+it does not fall back to a binary for another system. Architecture-independent
+packages (scripts, data) are published once as `any`.
+
+Archives are named `name-version-<arch>.warp` on Linux (x86_64, aarch64) and
+`name-version-<os>_<arch>.warp` elsewhere (`android_aarch64`); `noarch` means
+any platform. `tools/make-index.py` groups them by platform.
 
 ## Repositories
 
@@ -186,6 +266,24 @@ the next step on the roadmap; today the client parses and shows `deps`.
 }
 ```
 
+A package built for more than `linux-x86_64` carries a `builds` map keyed by
+platform. Each build has its own `version`, `sha256`, `size`, `url` and
+`deltas` (a build may omit `version` and use the entry's); the top level then
+still describes the `linux-x86_64` build, so clients that predate `builds` keep
+working. A package published only for `linux-x86_64` keeps the plain format above.
+
+```json
+"tool": {
+  "description": "...",
+  "version": "1.0", "sha256": "…", "size": 1234, "url": "https://…/tool-1.0-x86_64.warp",
+  "builds": {
+    "linux-x86_64":    {"version": "1.0", "sha256": "…", "size": 1234, "url": "https://…/tool-1.0-x86_64.warp"},
+    "linux-aarch64":   {"version": "1.0", "sha256": "…", "size": 1180, "url": "https://…/tool-1.0-aarch64.warp"},
+    "android-aarch64": {"version": "1.0", "sha256": "…", "size": 1190, "url": "https://…/tool-1.0-android_aarch64.warp"}
+  }
+}
+```
+
 `variants` is optional: `kind` is `direct`, `torrent`, `magnet`, `p2p`, `http`,
 `https` or `file`; higher `priority` wins within a transport class. Without it
 the top-level `url`/`sha256` are used. `index.json.sig` is the base64 Ed25519
@@ -201,6 +299,9 @@ is used only for the built-in `k1os`.
 
 ```bash
 sh tests/delta-roundtrip.sh        # delta build/apply, wrong base and truncation rejected
+sh tests/versions.sh              # versions side by side: install any, switch, pin, rollback chain, run, gc
+sh tests/multi-platform.sh        # one build per OS/CPU in the index; the client takes only its own
+sh tests/node-stats.sh             # node: volunteer limits, one process, counters, opt-in statistics
 sh tests/e2e-delta-upgrade.sh      # custom repo over HTTP, install → upgrade via delta → rollback, in the K1OS container
 ```
 

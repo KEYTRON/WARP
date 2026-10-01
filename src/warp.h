@@ -6,11 +6,40 @@
 #include <sys/types.h>
 
 /* ── version & paths ─────────────────────────────────────────── */
-#define WARP_VERSION     "0.4.1"
+#define WARP_VERSION     "0.4.2"
+#ifndef WARP_STORE_DIR
 #define WARP_STORE_DIR   "/var/lib/warp"
+#endif
 #define WARP_INDEX_MIRRORS 3
 extern const char *g_warp_mirrors[WARP_INDEX_MIRRORS];
-#define WARP_ARCH        "x86_64"
+/* The machine this binary was built for. WARP installs prebuilt packages only:
+ * the client takes the build made for its own OS and architecture from the
+ * index and never compiles anything. The pair is the "platform", written
+ * `<os>-<arch>` (linux-x86_64, linux-aarch64, android-aarch64, macos-aarch64). */
+#ifndef WARP_ARCH
+#  if defined(__x86_64__)
+#    define WARP_ARCH    "x86_64"
+#  elif defined(__aarch64__)
+#    define WARP_ARCH    "aarch64"
+#  elif defined(__riscv) && __riscv_xlen == 64
+#    define WARP_ARCH    "riscv64"
+#  else
+#    error "Unknown architecture: build with -DWARP_ARCH=\"<arch>\""
+#  endif
+#endif
+#ifndef WARP_OS
+#  if defined(__ANDROID__)
+#    define WARP_OS      "android"       /* Termux: bionic, not glibc */
+#  elif defined(__linux__)
+#    define WARP_OS      "linux"
+#  elif defined(__APPLE__)
+#    define WARP_OS      "macos"
+#  else
+#    error "Unknown OS: build with -DWARP_OS=\"<os>\""
+#  endif
+#endif
+#define WARP_PLATFORM    WARP_OS "-" WARP_ARCH
+const char *warp_archive_tag(void);   /* archive name part: "x86_64" on Linux, "android_aarch64" elsewhere */
 
 /* ── P2P / seeding ───────────────────────────────────────────── */
 #define WARP_PEER_PORT       7777
@@ -20,7 +49,9 @@ extern const char *g_warp_mirrors[WARP_INDEX_MIRRORS];
 #define WARP_PEERS_MAX_AGE   300   /* peer list TTL: 5 minutes */
 #define WARP_P2P_TIMEOUT     30L   /* per-peer download timeout (seconds) */
 #define WARP_P2P_MAX_TRIES   5     /* max peers to try before fallback */
+#ifndef WARP_TRACKER_URL
 #define WARP_TRACKER_URL     "https://keytron-prime.org/warp"
+#endif
 
 /* ── compile-time flags ──────────────────────────────────────── */
 /* Define WARP_SKIP_SIG_VERIFY to skip Ed25519 signature checks (dev) */
@@ -109,6 +140,9 @@ typedef struct {
     int    delta_count;
     warp_dep_ref_t   deps[WARP_MAX_ENTRY_DEPS];
     int    dep_count;
+    int    no_build;            /* 1 = the index has no build for this platform */
+    int    versioned;           /* 1 = listed as name@version (an older release), not the latest */
+    char   available[160];      /* platforms that do have one (for the message) */
 } warp_pkg_entry_t;
 
 typedef struct {
@@ -143,7 +177,21 @@ typedef struct {
     size_t monthly_used_bytes;   /* bytes uploaded this month               */
     char   month_tag[8];         /* "YYYY-MM" – reset sentinel              */
     int    cheap_sd;             /* 1=cheap SD card mode (cache in /tmp)   */
+    /* ── 0.4.2 ── */
+    int    volunteer;            /* 1=volunteer mode: also cache rarely seeded packages */
+    int    unlimited;            /* 1=no size limit, take every package     */
+    size_t max_packages;         /* max packages in volunteer cache (0=∞)   */
+    size_t reserve_bytes;        /* disk space to keep free (0=default 1G)  */
+    unsigned long long uploaded_total;   /* bytes sent over the whole life  */
+    unsigned long long served_total;     /* packages sent over the whole life */
+    int    stats_consent;        /* 1=user agreed to send anonymous counters */
+    int    consent_asked;        /* 1=the question has been asked already   */
+    char   node_id[33];          /* random anonymous node id (hex)          */
 } warp_seed_config_t;
+
+#define WARP_RESERVE_DEFAULT ((size_t)1073741824)   /* keep 1 GiB free */
+#define WARP_NODE_PID        WARP_STORE_DIR "/node.pid"
+#define WARP_NET_STATS_CACHE WARP_STORE_DIR "/net-stats.json"
 
 extern char g_volunteer_dir[512];
 
@@ -226,6 +274,22 @@ int  store_remove(const char *name);
 int  store_rollback(const char *name);
 int  store_list(warp_installed_t **out, int *count);
 int  store_is_installed(const char *name, warp_installed_t *info);
+
+/* ── versions side by side (store.c, versions.c) ─────────────── */
+typedef struct {
+    char hash12[13];
+    char version[WARP_MAX_NAME];
+    char path[512];
+    int  active;
+} warp_version_t;
+int  store_name_ok(const char *name);
+int  store_split_dir(const char *dirname, char *name, size_t nsz, char *hash12);
+int  store_versions(const char *name, warp_version_t **out, int *count);
+int  store_switch(const char *name, const char *spec);
+int  store_history(const char *name, char (*out)[13], int max);
+int  store_pin_get(const char *name, char *ver, size_t sz);
+int  store_pin_set(const char *name, const char *ver);
+void store_pin_clear(const char *name);
 void store_free_list(warp_installed_t *list, int count);
 
 /* ── index.h (inline) ────────────────────────────────────────── */
@@ -243,11 +307,25 @@ int    p2p_download(const char *pkg_name, const char *sha256_expected,
                     const char *dest_path, warp_peer_list_t *peers);
 int    p2p_announce(const char *announce_url, const char *pkg_name,
                     const char *sha256, int port, int is_volunteer);
-void   p2p_seed(int port);
-int    p2p_volunteer(warp_seed_config_t *cfg, int port);
+int    p2p_node_run(warp_seed_config_t *cfg, int port);
+int    p2p_node_signal(int sig);
 int    seed_config_load(warp_seed_config_t *cfg);
 int    seed_config_save(const warp_seed_config_t *cfg);
 size_t volunteer_used_bytes(void);
+size_t volunteer_count(void);
+size_t warp_parse_size(const char *s);
+void   warp_fmt_size(size_t bytes, char *buf, size_t bufsz);
+void   seed_config_defaults(warp_seed_config_t *cfg);
+
+/* ── stats (stats.c) ─────────────────────────────────────────── */
+void stats_ensure_node_id(warp_seed_config_t *cfg);
+void stats_print_disclosure(const warp_seed_config_t *cfg);
+int  stats_ask_consent(warp_seed_config_t *cfg);     /* interactive Y/N, default N */
+int  stats_report(const warp_seed_config_t *cfg);    /* POST counters, only with consent */
+int  stats_fetch_network(void);                      /* GET tracker /status into cache */
+void stats_print_local(const warp_seed_config_t *cfg);
+void stats_print_network(void);
+void stats_print_help_line(void);                    /* offline, for warp --help */
 
 /* ── commands ────────────────────────────────────────────────── */
 int cmd_install   (int argc, char **argv);
@@ -262,6 +340,13 @@ int cmd_sign      (int argc, char **argv);
 int cmd_pack      (int argc, char **argv);
 int cmd_seed      (int argc, char **argv);
 int cmd_volunteer (int argc, char **argv);
+int cmd_stats     (int argc, char **argv);
+int cmd_versions  (int argc, char **argv);
+int cmd_switch    (int argc, char **argv);
+int cmd_pin       (int argc, char **argv);
+int cmd_unpin     (int argc, char **argv);
+int cmd_run       (int argc, char **argv);
+int cmd_gc        (int argc, char **argv);
 int cmd_upgrade   (int argc, char **argv);
 int cmd_repo      (int argc, char **argv);
 int cmd_delta     (int argc, char **argv);

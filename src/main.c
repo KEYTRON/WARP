@@ -29,12 +29,17 @@ static void print_help(void) {
     printf(
         "  " WARP_BOLD "Usage:" WARP_RESET " warp <command> [args]\n\n"
         "  " WARP_BOLD "Commands:" WARP_RESET "\n"
-        "    install    <pkg>       Install a package\n"
+        "    install    <pkg>[@ver] Install a package (or one specific version)\n"
         "    upgrade    [pkg...]    Upgrade installed packages (delta when available)\n"
         "    remove     <pkg>       Remove a package\n"
         "    list                   List installed packages\n"
         "    search     <query>     Search available packages\n"
-        "    rollback   <pkg>       Revert to previous version\n"
+        "    rollback   <pkg>       Go one version back (repeat to go further)\n"
+        "    versions   <pkg>       Installed and published versions\n"
+        "    switch     <pkg> <ver> Use any installed version (no download)\n"
+        "    pin|unpin  <pkg> [ver] Keep a version: 'upgrade' leaves it alone\n"
+        "    run        <pkg>[@ver] [args]  Run a version without switching\n"
+        "    gc         [--keep N] [--dry-run]  Remove versions nobody uses\n"
         "    info       <pkg>       Show package details\n"
         "    update                 Refresh package indexes\n"
         "    repo       list|add|remove|enable|disable   Manage repositories\n"
@@ -43,13 +48,21 @@ static void print_help(void) {
         "    sign       <file>      Sign a file, writing <file>.sig\n"
         "    pack       <dir>       Create .warp from a directory\n"
         "    delta      <old> <new> <out>   Build a delta between two archives\n"
-        "    seed                   Seed installed packages to peers\n"
-        "    volunteer              Volunteer seeding (setup wizard)\n"
+        "    seed                   Seed installed packages to peers (one node process)\n"
+        "    volunteer              Volunteer mode: seed + cache rarely seeded packages\n"
         "      --setup              Re-run interactive setup\n"
-        "      --status             Show current config & usage\n"
-        "      --quota  <N>         Disk quota (e.g. 10G, 500M)\n"
+        "      --enable|--disable   Turn volunteer mode on or off (seeding keeps running)\n"
+        "      --quota <N|all>      Disk for the cache (10G, 10.46G, 500M, all)\n"
+        "      --packages <N|all>   Max packages in the cache (46, all)\n"
+        "      --reserve <N>        Disk space to keep free (default 1G)\n"
         "      --no-serve           Cache only, don't serve files\n"
-        "      --monthly <N>        Monthly upload cap (e.g. 50G)\n\n"
+        "      --monthly <N>        Monthly upload cap (e.g. 50G)\n"
+        "      --status             Show this node's state\n"
+        "      --no-start           Only save the settings, don't run the node\n"
+        "    stats                  This node and the network: sent, packages, nodes, traffic\n"
+        "      --what               Show exactly what anonymous statistics contain\n"
+        "      --consent|--no-stats Agree to / stop sending anonymous statistics (default: off)\n"
+        "      --reset-id           New random anonymous node id\n\n"
         "  " WARP_BOLD "Examples:" WARP_RESET "\n"
         "    warp search editor\n"
         "    warp install nano\n"
@@ -58,6 +71,7 @@ static void print_help(void) {
         "  Repositories: " WARP_REPOS_CONF " (default: k1os via GitHub, GitLab, GitVerse)\n"
         "  Store: " WARP_STORE_DIR "\n\n"
     );
+    stats_print_help_line();
 }
 
 typedef struct {
@@ -84,6 +98,13 @@ static const cmd_t commands[] = {
     { "pack",      cmd_pack      },
     { "seed",      cmd_seed      },
     { "volunteer", cmd_volunteer },
+    { "stats",     cmd_stats     },
+    { "versions",  cmd_versions  },
+    { "switch",    cmd_switch    },
+    { "pin",       cmd_pin       },
+    { "unpin",     cmd_unpin     },
+    { "run",       cmd_run       },
+    { "gc",        cmd_gc        },
     { NULL, NULL }
 };
 
@@ -92,6 +113,14 @@ int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     if (argc < 2) { print_help(); return 0; }
 
+    if (strcmp(argv[1], "archive-tag") == 0) {      /* for build scripts */
+        printf("%s\n", warp_archive_tag());
+        return 0;
+    }
+    if (strcmp(argv[1], "platform") == 0) {         /* for build scripts and bug reports */
+        printf("%s\n", WARP_PLATFORM);
+        return 0;
+    }
     if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0) {
         printf("warp %s\n", WARP_VERSION);
         return 0;

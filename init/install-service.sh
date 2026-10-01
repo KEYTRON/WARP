@@ -2,7 +2,8 @@
 # WARP init service installer — auto-detects systemd / OpenRC / runit
 set -e
 
-SERVICE="${1:-seed}"   # seed or volunteer
+ARG="${1:-seed}"      # seed or volunteer; both install the one node service, warp-seed
+SERVICE=seed
 WARP_BIN="/usr/local/bin/warp"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -11,13 +12,14 @@ ok()  { echo "  ✓ $*"; }
 info(){ echo "  → $*"; }
 
 [ -x "$WARP_BIN" ] || die "warp not found at $WARP_BIN. Run 'make install' first."
-[ "$SERVICE" = "seed" ] || [ "$SERVICE" = "volunteer" ] || \
+[ "$ARG" = "seed" ] || [ "$ARG" = "volunteer" ] || \
     die "Usage: $0 [seed|volunteer]"
 
-if [ "$SERVICE" = "volunteer" ] && [ ! -f /var/lib/warp/seed.conf ]; then
+# One process does both jobs: volunteer mode is a setting, not a second service.
+if [ "$ARG" = "volunteer" ]; then
     echo ""
-    echo "  No volunteer config yet. Running setup..."
-    warp volunteer --setup
+    echo "  Volunteer mode is a setting of the seed service. Running setup..."
+    warp volunteer --setup --no-start
 fi
 
 echo ""

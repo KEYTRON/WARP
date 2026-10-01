@@ -14,7 +14,9 @@ SRCS    = $(SRC_DIR)/main.c \
           $(SRC_DIR)/commands.c \
           $(SRC_DIR)/repo.c \
           $(SRC_DIR)/delta.c \
-          $(SRC_DIR)/p2p.c
+          $(SRC_DIR)/p2p.c \
+          $(SRC_DIR)/stats.c \
+          $(SRC_DIR)/versions.c
 
 OBJS    = $(SRCS:.c=.o)
 TARGET  = warp

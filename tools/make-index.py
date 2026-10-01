@@ -3,9 +3,15 @@
 
     tools/make-index.py <packages-dir> --base-url URL --key priv.hex [--warp ./warp]
 
-Every `name-version-arch.warp` in the directory becomes an entry with its real
-sha256 and size; descriptions are carried over from the existing index.json
-when present. Entries whose archive is missing are dropped — an index must
+Every `name-version-<tag>.warp` in the directory becomes a build of its package
+with its real sha256 and size; descriptions are carried over from the existing
+index.json when present. <tag> names the platform: the architecture alone for
+Linux (x86_64, aarch64: the names that already exist) and <os>_<arch> for other
+systems (android_aarch64, macos_aarch64); `noarch` is a build for any platform.
+A package built for more than linux-x86_64 gets a `builds` map keyed by
+`<os>-<arch>`; the top level then still describes the linux-x86_64 build, so
+clients that predate `builds` keep working. Clients install only the build made
+for their own platform. Entries whose archive is missing are dropped — an index must
 never advertise what the mirrors cannot serve. The detached signature
 (`index.json.sig`) is produced with `warp sign` so it matches what clients
 verify.
@@ -20,6 +26,18 @@ from datetime import date
 from pathlib import Path
 
 NAME_RE = re.compile(r"^(?P<name>[a-z0-9_+.-]+?)-(?P<version>\d[^-]*)-(?P<arch>[a-z0-9_]+)\.warp$")
+OSES = ("android", "macos", "freebsd", "openbsd", "netbsd", "windows")
+LEGACY = "linux-x86_64"
+
+
+def platform_of(tag: str) -> str:
+    """Archive tag -> platform: x86_64 -> linux-x86_64, android_aarch64 -> android-aarch64."""
+    if tag == "noarch":
+        return "any"
+    for os_name in OSES:
+        if tag.startswith(os_name + "_"):
+            return f"{os_name}-{tag[len(os_name) + 1:]}"
+    return f"linux-{tag}"
 
 
 def sha256(path: Path) -> str:
@@ -36,8 +54,9 @@ def main() -> int:
     ap.add_argument("--base-url", required=True, help="mirror URL the archives are served from")
     ap.add_argument("--key", required=True, type=Path, help="Ed25519 private key (hex) for warp sign")
     ap.add_argument("--warp", default="warp", help="warp binary with the `sign` command")
-    ap.add_argument("--peer-list-url", default="https://keytron-prime.org/warp/dashboard")
-    ap.add_argument("--keep-old-versions", action="store_true", help="list every archive, not just the newest per package")
+    ap.add_argument("--peer-list-url", default="https://keytron-prime.org/warp/peers")
+    ap.add_argument("--keep-old-versions", action="store_true",
+                    help="also list every older release as name@version (so `warp install name@version` and pins can use it)")
     ap.add_argument("--no-deltas", action="store_true", help="do not build <name>-<old>-to-<new>-<arch>.warpdelta files")
     args = ap.parse_args()
 
@@ -49,60 +68,85 @@ def main() -> int:
         except json.JSONDecodeError:
             pass
 
-    found: dict[str, list[tuple[str, Path]]] = {}
+    # name -> platform -> [(version, archive, tag)]
+    found: dict[str, dict[str, list[tuple[str, Path, str]]]] = {}
     for archive in sorted(args.packages_dir.glob("*.warp")):
         m = NAME_RE.match(archive.name)
         if not m:
             print(f"skip {archive.name}: name is not name-version-arch.warp", file=sys.stderr)
             continue
-        found.setdefault(m["name"], []).append((m["version"], archive))
+        found.setdefault(m["name"], {}).setdefault(platform_of(m["arch"]), []).append((m["version"], archive, m["arch"]))
 
     def vkey(v: str):
         return [int(p) if p.isdigit() else p for p in re.split(r"[.\-]", v)]
 
     base = args.base_url.rstrip("/")
+
+    def build_of(name: str, version: str, archive: Path, tag: str, older: list) -> dict:
+        b = {
+            "version": version,
+            "sha256": sha256(archive),
+            "size": archive.stat().st_size,
+            "url": f"{base}/{archive.name}",
+        }
+        # Deltas from every older archive of the same platform still on the mirror.
+        deltas = []
+        if not args.no_deltas:
+            for old_version, old_archive, _ in older:
+                delta = args.packages_dir / f"{name}-{old_version}-to-{version}-{tag}.warpdelta"
+                if not delta.exists():
+                    subprocess.run([args.warp, "delta", str(old_archive), str(archive), str(delta)],
+                                   check=True, stdout=subprocess.DEVNULL)
+                dsize = delta.stat().st_size
+                if dsize >= b["size"] * 0.9:
+                    print(f"  delta {old_version}->{version} saves nothing ({dsize} B), not listed")
+                    delta.unlink()
+                    continue
+                deltas.append({
+                    "from_version": old_version,
+                    "from_sha256": sha256(old_archive),
+                    "url": f"{base}/{delta.name}",
+                    "sha256": sha256(delta),
+                    "size": dsize,
+                })
+                print(f"  delta {old_version}->{version}: {dsize} B ({100 * dsize / b['size']:.0f}% of full)")
+        if deltas:
+            b["deltas"] = deltas
+        return b
+
     packages = {}
-    for name, versions in sorted(found.items()):
-        versions.sort(key=lambda t: vkey(t[0]))
-        chosen = versions if args.keep_old_versions else versions[-1:]
-        for version, archive in chosen:
-            key = name if len(chosen) == 1 else f"{name}@{version}"
+    for name, platforms in sorted(found.items()):
+        for lst in platforms.values():
+            lst.sort(key=lambda t: vkey(t[0]))
+        # The plain key is the latest release of each platform (with deltas).
+        selections = [(None, {plat: (lst[-1], lst[:-1]) for plat, lst in platforms.items()})]
+        if args.keep_old_versions:
+            # Every release also gets a `name@version` entry so it can be installed
+            # or pinned later; clients that predate this ignore the extra keys.
+            for v in sorted({v for lst in platforms.values() for v, _, _ in lst}, key=vkey):
+                selections.append((v, {plat: ([t for t in lst if t[0] == v][0], [])
+                                       for plat, lst in platforms.items() if any(t[0] == v for t in lst)}))
+
+        for only_version, chosen in selections:
+            builds = {plat: build_of(name, ver, arch, tag, older)
+                      for plat, ((ver, arch, tag), older) in sorted(chosen.items())}
+            legacy = builds.get(LEGACY)
+            first = legacy or next(iter(builds.values()))
             entry = {
-                "version": version,
-                "description": old.get(name, {}).get("description", f"{name} {version} for K1OS"),
-                "sha256": sha256(archive),
-                "size": archive.stat().st_size,
-                "url": f"{base}/{archive.name}",
+                "version": first["version"],
+                "description": old.get(name, {}).get("description", f"{name} {first['version']} for K1OS"),
             }
             deps = old.get(name, {}).get("deps")
             if deps:
                 entry["deps"] = deps
-            # Deltas from every older archive still on the mirror to this one.
-            if not args.no_deltas and version == versions[-1][0]:
-                deltas = []
-                for old_version, old_archive in versions[:-1]:
-                    m = NAME_RE.match(archive.name)
-                    delta = args.packages_dir / f"{name}-{old_version}-to-{version}-{m['arch']}.warpdelta"
-                    if not delta.exists():
-                        subprocess.run([args.warp, "delta", str(old_archive), str(archive), str(delta)],
-                                       check=True, stdout=subprocess.DEVNULL)
-                    dsize = delta.stat().st_size
-                    if dsize >= entry["size"] * 0.9:
-                        print(f"  delta {old_version}->{version} saves nothing ({dsize} B), not listed")
-                        delta.unlink()
-                        continue
-                    deltas.append({
-                        "from_version": old_version,
-                        "from_sha256": sha256(old_archive),
-                        "url": f"{base}/{delta.name}",
-                        "sha256": sha256(delta),
-                        "size": dsize,
-                    })
-                    print(f"  delta {old_version}->{version}: {dsize} B ({100 * dsize / entry['size']:.0f}% of full)")
-                if deltas:
-                    entry["deltas"] = deltas
+            if legacy:      # the top level stays the linux-x86_64 build for older clients
+                entry.update({k: legacy[k] for k in ("sha256", "size", "url", "deltas") if k in legacy})
+            if set(builds) != {LEGACY}:
+                entry["builds"] = builds
+            key = name if only_version is None else f"{name}@{only_version}"
             packages[key] = entry
-            print(f"{key:<12} {version:<10} {entry['size']:>10} B  {entry['sha256'][:12]}")
+            plats = ",".join(sorted(builds))
+            print(f"{key:<12} {entry['version']:<10} {first['size']:>10} B  {first['sha256'][:12]}  [{plats}]")
 
     dropped = sorted(set(old) - set(found))
     if dropped:

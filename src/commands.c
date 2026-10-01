@@ -1,4 +1,7 @@
 #include <stdio.h>
+#include <signal.h>
+#include <strings.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -183,7 +186,7 @@ static int install_archive(const warp_pkg_entry_t *entry, const char *tmp_path) 
  * without a tracker gets no P2P, and its installs are never reported to ours. */
 static const char *repo_tracker(const warp_repo_t *repo) {
     if (repo->peer_list_url[0]) return repo->peer_list_url;
-    return repo->builtin ? WARP_TRACKER_URL "/dashboard" : "";
+    return repo->builtin ? WARP_TRACKER_URL "/peers" : "";
 }
 
 static void announce(const warp_pkg_entry_t *entry, const warp_repo_t *repo) {
@@ -210,6 +213,14 @@ static void print_entry_header(const warp_pkg_entry_t *entry) {
  * version when upgrading, NULL for a fresh install. */
 static int install_entry(const warp_index_t *idx, const warp_pkg_entry_t *entry,
                          const warp_installed_t *installed) {
+    /* WARP installs prebuilt packages only: no build for this OS/CPU means no
+     * install, never a download of someone else's binary or a local compile. */
+    if (entry->no_build) {
+        warp_err("'%s' has no build for %s", entry->name, WARP_PLATFORM);
+        if (entry->available[0]) warp_err("It is published for: %s", entry->available);
+        warp_err("WARP installs prebuilt packages and does not compile anything");
+        return WARP_ERR_NOENT;
+    }
     /* An unhashed entry can't be verified after download — refuse it
      * outright instead of installing on trust alone. */
     if (!entry->sha256[0]) {
@@ -239,18 +250,63 @@ static int install_entry(const warp_index_t *idx, const warp_pkg_entry_t *entry,
     return WARP_OK;
 }
 
-/* ── warp install <pkg> ──────────────────────────────────────── */
+/* ── warp install <pkg>[@version] ────────────────────────────── */
 int cmd_install(int argc, char **argv) {
-    if (argc < 1) { warp_err("Usage: warp install <package>"); return 1; }
-    const char *name = argv[0];
+    if (argc < 1) { warp_err("Usage: warp install <package>[@version]"); return 1; }
+    const char *spec = argv[0];
 
     if (store_init() != WARP_OK) return 1;
 
+    /* name@version (also repo/name@version): that release, next to what is there */
+    const char *at = strchr(spec, '@');
+    if (at) {
+        const char *slash = strchr(spec, '/');
+        const char *bare = slash && slash < at ? slash + 1 : spec;
+        char name[WARP_MAX_NAME];
+        size_t bl = (size_t)(at - bare);
+        if (bl == 0 || bl >= sizeof(name) || !at[1]) { warp_err("Usage: warp install <package>@<version>"); return 1; }
+        memcpy(name, bare, bl);
+        name[bl] = '\0';
+        const char *want = at + 1;
+        if (!store_name_ok(name)) { warp_err("Bad package name: %s", name); return 1; }
+
+        /* Already in the store: no download, just make it the active one. */
+        warp_version_t *v; int n;
+        store_versions(name, &v, &n);
+        int have = 0;
+        for (int i = 0; i < n; i++) if (strcmp(v[i].version, want) == 0) have = 1;
+        free(v);
+        if (have) {
+            if (store_switch(name, want) != WARP_OK) return 1;
+            warp_ok("%s %s was already in the store: now active", name, want);
+            return 0;
+        }
+
+        warp_index_t idx;
+        if (index_load(&idx, 0) != WARP_OK) { warp_err("Cannot load package index"); return 1; }
+        warp_pkg_entry_t entry, latest;
+        if (index_find(&idx, spec, &entry) != WARP_OK) {
+            warp_err("%s %s is not published", name, want);
+            warp_info("Published versions: warp versions %s", name);
+            index_free(&idx);
+            return 1;
+        }
+        int is_latest = index_find(&idx, name, &latest) == WARP_OK && strcmp(latest.version, entry.version) == 0;
+        int rc = install_entry(&idx, &entry, NULL);
+        index_free(&idx);
+        if (rc != WARP_OK) return 1;
+        /* An older release is chosen on purpose: keep `warp upgrade` from undoing it. */
+        if (!is_latest && store_pin_set(name, entry.version) == WARP_OK)
+            warp_info("Pinned at %s: 'warp upgrade' leaves it alone ('warp unpin %s' to release)", entry.version, name);
+        return 0;
+    }
+
+    const char *name = spec;
     warp_installed_t info;
     if (store_is_installed(name, &info)) {
         warp_warn("%s is already installed (version %s)", name, info.version);
         printf("  Use 'warp upgrade %s' to move to the latest version,\n", name);
-        printf("  or 'warp rollback %s' to revert to the previous one.\n", name);
+        printf("  'warp install %s@<version>' for a specific one, or 'warp rollback %s'.\n", name, name);
         return 0;
     }
 
@@ -311,9 +367,18 @@ int cmd_upgrade(int argc, char **argv) {
             if (!wanted) continue;
         }
         checked++;
+        char pin[WARP_MAX_NAME];
+        if (store_pin_get(list[i].name, pin, sizeof(pin))) {
+            printf("  %-20s pinned at %s, left alone ('warp unpin %s' to release)\n", list[i].name, pin, list[i].name);
+            continue;
+        }
         warp_pkg_entry_t entry;
         if (index_find(&idx, list[i].name, &entry) != WARP_OK) {
             warp_warn("%s: not in any repository, skipping", list[i].name);
+            continue;
+        }
+        if (entry.no_build) {
+            warp_warn("%s: no build for %s in the index, keeping %s", list[i].name, WARP_PLATFORM, list[i].version);
             continue;
         }
         char have[WARP_SHA256_HEX] = "";
@@ -483,8 +548,10 @@ int cmd_list(int argc, char **argv) {
     printf("  %-20s %-12s %s\n", "Package", "Version", "Store ID");
     printf("  %-20s %-12s %s\n", "-------", "-------", "--------");
     for (int i = 0; i < count; i++) {
-        printf("  " WARP_GREEN "%-20s" WARP_RESET " %-12s %s\n",
-               list[i].name, list[i].version, list[i].hash12);
+        char pin[WARP_MAX_NAME];
+        printf("  " WARP_GREEN "%-20s" WARP_RESET " %-12s %s%s\n",
+               list[i].name, list[i].version, list[i].hash12,
+               store_pin_get(list[i].name, pin, sizeof(pin)) ? "  " WARP_YELLOW "[pinned]" WARP_RESET : "");
     }
     printf("\n");
     store_free_list(list, count);
@@ -518,7 +585,9 @@ int cmd_search(int argc, char **argv) {
                "Package", "Version", "Description");
         for (int i = 0; i < count; i++) {
             /* Mark installed */
-            const char *marker = store_is_installed(results[i].name, NULL)
+            const char *marker = results[i].no_build
+                                  ? WARP_YELLOW " [no build for " WARP_PLATFORM "]" WARP_RESET
+                                  : store_is_installed(results[i].name, NULL)
                                   ? WARP_GREEN " [installed]" WARP_RESET : "";
             printf("  " WARP_CYAN "%-20s" WARP_RESET " %-12s %s%s\n",
                    results[i].name, results[i].version,
@@ -564,9 +633,15 @@ int cmd_info(int argc, char **argv) {
         if (index_find(&idx, name, &entry) == WARP_OK) {
             if (!installed) printf("\n  " WARP_BOLD "%s" WARP_RESET "\n", name);
             printf("  Latest:     %s\n", entry.version);
-            printf("  Size:       %.1f KB\n", (double)entry.size / 1024.0);
-            printf("  SHA256:     %.16s...\n", entry.sha256);
-            printf("  URL:        %s\n\n", entry.url);
+            if (entry.no_build) {
+                printf("  Build:      none for %s (published for: %s)\n\n", WARP_PLATFORM,
+                       entry.available[0] ? entry.available : "?");
+            } else {
+                printf("  Platform:   %s\n", WARP_PLATFORM);
+                printf("  Size:       %.1f KB\n", (double)entry.size / 1024.0);
+                printf("  SHA256:     %.16s...\n", entry.sha256);
+                printf("  URL:        %s\n\n", entry.url);
+            }
         } else if (!installed) {
             warp_err("Package not found: %s", name);
         }
@@ -583,7 +658,9 @@ int cmd_update(int argc, char **argv) {
     warp_index_t idx;
     if (index_load(&idx, 1) != WARP_OK) return 1;
     int failed = idx.refresh_failed;
-    warp_ok("Index updated: %d packages available", idx.count);
+    int latest = 0;
+    for (int i = 0; i < idx.count; i++) if (!idx.entries[i].versioned) latest++;
+    warp_ok("Index updated: %d packages available", latest);
     index_free(&idx);
     /* Packages from the repositories that did refresh stay usable, but a
      * script or CI must still see that some repository was not updated. */
@@ -644,6 +721,55 @@ int cmd_sign(int argc, char **argv) {
     return 0;
 }
 
+/* ── node (seed / volunteer / stats) ─────────────────────────── */
+
+/* "10G", "10.46G", "500M", "all" → bytes or unlimited. Returns 0 on success. */
+static int parse_limit(const char *s, size_t *bytes, int *unlimited) {
+    if (!s || !*s) return -1;
+    if (strcasecmp(s, "all") == 0 || strcasecmp(s, "unlimited") == 0) {
+        *unlimited = 1;
+        return 0;
+    }
+    if (!((s[0] >= '0' && s[0] <= '9') || s[0] == '.')) return -1;
+    size_t v = warp_parse_size(s);
+    if (v == 0) return -1;
+    *bytes = v;
+    *unlimited = 0;
+    return 0;
+}
+
+/* "46", "all" → package limit, 0 = no limit. Returns 0 on success. */
+static int parse_count(const char *s, size_t *out) {
+    if (!s || !*s) return -1;
+    if (strcasecmp(s, "all") == 0 || strcasecmp(s, "unlimited") == 0) { *out = 0; return 0; }
+    char *end;
+    unsigned long v = strtoul(s, &end, 10);
+    if (*end || v == 0) return -1;
+    *out = (size_t)v;
+    return 0;
+}
+
+/* Save the config and tell a running node to pick it up. */
+static int apply_config(const warp_seed_config_t *cfg) {
+    if (store_init() != WARP_OK) return 1;
+    if (seed_config_save(cfg) != WARP_OK) {
+        warp_err("Cannot write %s (try with sudo)", WARP_SEED_CONF);
+        return 1;
+    }
+    return 0;
+}
+
+static void poke_running_node(void) {
+    if (p2p_node_signal(SIGHUP) == WARP_OK)
+        warp_ok("A running node picked up the new settings");
+}
+
+/* Run the node in the foreground; "already running" is not a failure. */
+static int run_node(warp_seed_config_t *cfg, int port) {
+    int rc = p2p_node_run(cfg, port);
+    return (rc == WARP_OK || rc == WARP_ERR_EXIST) ? 0 : 1;
+}
+
 /* ── warp seed [--port N] ────────────────────────────────────── */
 int cmd_seed(int argc, char **argv) {
     int port = WARP_PEER_PORT;
@@ -652,196 +778,222 @@ int cmd_seed(int argc, char **argv) {
             port = atoi(argv[++i]);
     }
 
+    warp_seed_config_t cfg;
+    seed_config_load(&cfg);          /* defaults when there is no file yet */
+
     warp_installed_t *list;
     int count;
-    if (store_list(&list, &count) != WARP_OK || count == 0) {
+    int have_pkgs = (store_list(&list, &count) == WARP_OK && count > 0);
+    if (have_pkgs) {
+        printf("\n  " WARP_BOLD "Seeding %d package(s):" WARP_RESET "\n", count);
+        for (int i = 0; i < count; i++)
+            printf("  " WARP_GREEN "  %-20s" WARP_RESET " %s\n", list[i].name, list[i].version);
+        printf("\n");
+        store_free_list(list, count);
+    } else if (!cfg.volunteer) {
         warp_warn("No packages installed — nothing to seed");
         return 0;
     }
 
-    printf("\n  " WARP_BOLD "Seeding %d package(s):" WARP_RESET "\n", count);
-    for (int i = 0; i < count; i++)
-        printf("  " WARP_GREEN "  %-20s" WARP_RESET " %s\n",
-               list[i].name, list[i].version);
-    printf("\n");
-    store_free_list(list, count);
+    if (cfg.volunteer)
+        warp_info("Volunteer mode is on: this node also caches rarely seeded packages");
 
-    /* Announce full store to tracker before starting seed server */
-    warp_info("Announcing to tracker...");
-    if (p2p_announce(WARP_TRACKER_URL, NULL, NULL, port, 0) == WARP_OK)
-        warp_info("Announced — visible to peers");
-    else
-        warp_warn("Tracker unreachable — seeding locally only");
+    if (!cfg.consent_asked && stats_ask_consent(&cfg))
+        seed_config_save(&cfg);
 
-    p2p_seed(port);
-    return 0;
+    return run_node(&cfg, port);
 }
 
-/* ── warp volunteer [--quota N] [--no-serve] [--monthly N] ──── */
+/* ── warp volunteer [flags] ──────────────────────────────────── */
 int cmd_volunteer(int argc, char **argv) {
     warp_seed_config_t cfg;
     int have_cfg = (seed_config_load(&cfg) == WARP_OK);
     int do_setup = !have_cfg;
     int port     = WARP_PEER_PORT;
+    int disable  = 0, status = 0, no_start = 0;
 
-    /* Parse flags */
     for (int i = 0; i < argc; i++) {
-        if (strcmp(argv[i], "--setup") == 0) {
-            do_setup = 1;
-        } else if (strcmp(argv[i], "--cheap-sd") == 0) {
-            cfg.cheap_sd = 1;
-            if (!have_cfg) { memset(&cfg, 0, sizeof(cfg)); cfg.cheap_sd = 1; cfg.serve = 1; }
-        } else if (strcmp(argv[i], "--status") == 0) {
-            if (!have_cfg) {
-                printf("\n  No volunteer config yet.\n");
-                printf("  Run: warp volunteer --setup\n\n");
-            } else {
-                char sz_used[32], sz_quota[32], sz_lim[32], sz_uploaded[32];
-                size_t used = volunteer_used_bytes();
-                if      (used >= (size_t)1073741824) snprintf(sz_used, sizeof(sz_used), "%.2f GB", (double)used / 1073741824.0);
-                else if (used >= (size_t)1048576)    snprintf(sz_used, sizeof(sz_used), "%.1f MB", (double)used / 1048576.0);
-                else                                 snprintf(sz_used, sizeof(sz_used), "%.1f KB", (double)used / 1024.0);
-
-                if (cfg.quota_bytes >= (size_t)1073741824)
-                    snprintf(sz_quota, sizeof(sz_quota), "%.2f GB", (double)cfg.quota_bytes / 1073741824.0);
-                else snprintf(sz_quota, sizeof(sz_quota), "%.1f MB", (double)cfg.quota_bytes / 1048576.0);
-
-                if (cfg.monthly_limit_bytes)
-                    snprintf(sz_lim, sizeof(sz_lim), "%.2f GB", (double)cfg.monthly_limit_bytes / 1073741824.0);
-                else snprintf(sz_lim, sizeof(sz_lim), "unlimited");
-
-                if (cfg.monthly_used_bytes >= (size_t)1048576)
-                    snprintf(sz_uploaded, sizeof(sz_uploaded), "%.1f MB", (double)cfg.monthly_used_bytes / 1048576.0);
-                else snprintf(sz_uploaded, sizeof(sz_uploaded), "%.1f KB", (double)cfg.monthly_used_bytes / 1024.0);
-
-                printf("\n  " WARP_BOLD "Volunteer status:" WARP_RESET "\n\n");
-                printf("  Cache:         %s / %s\n", sz_used, sz_quota);
-                printf("  Serving:       %s\n",  cfg.serve ? WARP_GREEN "yes" WARP_RESET : WARP_YELLOW "no" WARP_RESET);
-                printf("  Cheap SD mode: %s\n",  cfg.cheap_sd ? WARP_GREEN "yes (cache in RAM /tmp)" WARP_RESET : WARP_YELLOW "no" WARP_RESET);
-                printf("  Monthly limit: %s", sz_lim);
-                if (cfg.monthly_limit_bytes)
-                    printf(" (uploaded this month: %s)\n", sz_uploaded);
-                else printf("\n");
-                printf("  Month:         %s\n\n", cfg.month_tag);
+        const char *a = argv[i];
+        int more = (i + 1 < argc);
+        if      (strcmp(a, "--setup") == 0)    do_setup = 1;
+        else if (strcmp(a, "--status") == 0)   status = 1;
+        else if (strcmp(a, "--no-start") == 0) no_start = 1;
+        else if (strcmp(a, "--enable") == 0)   { cfg.volunteer = 1; do_setup = 0; }
+        else if (strcmp(a, "--disable") == 0)  disable = 1;
+        else if (strcmp(a, "--no-serve") == 0) { cfg.serve = 0; do_setup = 0; }
+        else if (strcmp(a, "--cheap-sd") == 0) { cfg.cheap_sd = 1; do_setup = 0; }
+        else if (strcmp(a, "--quota") == 0 && more) {
+            if (parse_limit(argv[++i], &cfg.quota_bytes, &cfg.unlimited) != 0) {
+                warp_err("Bad --quota value. Examples: 10G, 10.46G, 500M, all");
+                return 1;
             }
-            return 0;
-        } else if (strcmp(argv[i], "--no-serve") == 0) {
-            cfg.serve = 0;
-            if (!have_cfg) { memset(&cfg, 0, sizeof(cfg)); cfg.serve = 0; }
-        } else if (strcmp(argv[i], "--quota") == 0 && i + 1 < argc) {
-            if (!have_cfg) memset(&cfg, 0, sizeof(cfg));
-            cfg.quota_bytes = 0;
-            /* parse_size is in p2p.c — call volunteer with this flag instead */
-            const char *qs = argv[++i];
-            double val = strtod(qs, NULL);
-            char last = qs[strlen(qs) - 1] | 0x20;
-            if      (last == 'g') cfg.quota_bytes = (size_t)(val * 1073741824.0);
-            else if (last == 'm') cfg.quota_bytes = (size_t)(val * 1048576.0);
-            else if (last == 'k') cfg.quota_bytes = (size_t)(val * 1024.0);
-            else                  cfg.quota_bytes = (size_t)val;
-            cfg.serve = 1;
             do_setup = 0;
-        } else if (strcmp(argv[i], "--monthly") == 0 && i + 1 < argc) {
-            const char *ms = argv[++i];
-            double val = strtod(ms, NULL);
-            char last = ms[strlen(ms) - 1] | 0x20;
-            if      (last == 'g') cfg.monthly_limit_bytes = (size_t)(val * 1073741824.0);
-            else if (last == 'm') cfg.monthly_limit_bytes = (size_t)(val * 1048576.0);
-            else if (last == 'k') cfg.monthly_limit_bytes = (size_t)(val * 1024.0);
-            else                  cfg.monthly_limit_bytes = (size_t)val;
-        } else if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
+        } else if (strcmp(a, "--packages") == 0 && more) {
+            if (parse_count(argv[++i], &cfg.max_packages) != 0) {
+                warp_err("Bad --packages value. Examples: 46, all");
+                return 1;
+            }
+            do_setup = 0;
+        } else if (strcmp(a, "--reserve") == 0 && more) {
+            size_t v = warp_parse_size(argv[++i]);
+            if (v == 0) { warp_err("Bad --reserve value. Example: 2G"); return 1; }
+            cfg.reserve_bytes = v;
+            do_setup = 0;
+        } else if (strcmp(a, "--monthly") == 0 && more) {
+            cfg.monthly_limit_bytes = warp_parse_size(argv[++i]);
+        } else if (strcmp(a, "--port") == 0 && more) {
             port = atoi(argv[++i]);
+        } else {
+            warp_err("Unknown option: %s", a);
+            return 1;
         }
+    }
+
+    if (status) {
+        stats_print_local(&cfg);
+        char lim[32];
+        if (cfg.monthly_limit_bytes) warp_fmt_size(cfg.monthly_limit_bytes, lim, sizeof(lim));
+        else snprintf(lim, sizeof(lim), "unlimited");
+        printf("  Monthly cap:    %s\n  Disk kept free: %.2f GB\n\n", lim,
+               (double)(cfg.reserve_bytes ? cfg.reserve_bytes : WARP_RESERVE_DEFAULT) / 1073741824.0);
+        return 0;
+    }
+
+    if (disable) {
+        cfg.volunteer = 0;
+        if (apply_config(&cfg) != 0) return 1;
+        warp_ok("Volunteer mode off — the node keeps seeding what you installed");
+        poke_running_node();
+        return 0;
     }
 
     if (do_setup) {
-        /* Interactive wizard */
-        printf("\n  " WARP_BOLD "WARP Volunteer Seeding Setup" WARP_RESET "\n\n");
-        printf("  Volunteer mode downloads and seeds less popular packages.\n");
-        printf("  You control disk space and bandwidth limits.\n\n");
-
-        memset(&cfg, 0, sizeof(cfg));
-        cfg.serve = 1;
+        printf("\n  " WARP_BOLD "WARP Volunteer Setup" WARP_RESET "\n\n");
+        printf("  A volunteer node also caches rarely seeded packages and shares them.\n");
+        printf("  You decide how much disk it may use and how many packages it keeps.\n\n");
 
         char inp[64];
 
-        /* Quota */
-        while (cfg.quota_bytes == 0) {
-            printf("  Disk quota for volunteer cache [e.g. 10G, 500M]: ");
+        cfg.quota_bytes = 0; cfg.unlimited = 0;
+        for (;;) {
+            printf("  Disk for the volunteer cache [10G, 10.46G, 500M or 'all']: ");
             fflush(stdout);
             if (!fgets(inp, sizeof(inp), stdin)) return 1;
             inp[strcspn(inp, "\r\n")] = '\0';
-            double val = strtod(inp, NULL);
-            char last = inp[strlen(inp) - 1] | 0x20;
-            if      (last == 'g') cfg.quota_bytes = (size_t)(val * 1073741824.0);
-            else if (last == 'm') cfg.quota_bytes = (size_t)(val * 1048576.0);
-            else if (last == 'k') cfg.quota_bytes = (size_t)(val * 1024.0);
-            else                  cfg.quota_bytes = (size_t)val;
-            if (cfg.quota_bytes == 0)
-                printf("  " WARP_RED "Invalid size." WARP_RESET " Try e.g. 10G or 500M.\n");
+            if (parse_limit(inp, &cfg.quota_bytes, &cfg.unlimited) == 0) break;
+            printf("  " WARP_RED "Invalid size." WARP_RESET " Try 10G, 10.46G, 500M or all.\n");
         }
 
-        /* Cheap SD mode */
-        printf("  Cheap SD-card mode? (uses RAM /tmp for volunteer cache to prevent write wear) [y/N]: ");
-        fflush(stdout);
-        if (!fgets(inp, sizeof(inp), stdin)) return 1;
-        cfg.cheap_sd = (inp[0] == 'y' || inp[0] == 'Y') ? 1 : 0;
-
-        /* Serve */
-        printf("  Serve files to peers? (slower internet = answer n) [Y/n]: ");
-        fflush(stdout);
-        if (!fgets(inp, sizeof(inp), stdin)) return 1;
-        cfg.serve = (inp[0] == 'n' || inp[0] == 'N') ? 0 : 1;
-
-        /* Monthly limit */
-        printf("  Monthly upload limit (0 or Enter = unlimited) [0]: ");
+        printf("  How many packages at most [number, Enter = no limit]: ");
         fflush(stdout);
         if (!fgets(inp, sizeof(inp), stdin)) return 1;
         inp[strcspn(inp, "\r\n")] = '\0';
-        if (inp[0] && inp[0] != '0') {
-            double val = strtod(inp, NULL);
-            char last = inp[strlen(inp) - 1] | 0x20;
-            if      (last == 'g') cfg.monthly_limit_bytes = (size_t)(val * 1073741824.0);
-            else if (last == 'm') cfg.monthly_limit_bytes = (size_t)(val * 1048576.0);
-            else                  cfg.monthly_limit_bytes = (size_t)val;
+        cfg.max_packages = 0;
+        if (inp[0] && parse_count(inp, &cfg.max_packages) != 0) {
+            warp_warn("Not a number — no package limit");
+            cfg.max_packages = 0;
         }
 
-        /* Init month tag */
+        printf("  Cheap SD-card mode? (volunteer cache in RAM /tmp, saves flash wear) [y/N]: ");
+        fflush(stdout);
+        if (!fgets(inp, sizeof(inp), stdin)) return 1;
+        cfg.cheap_sd = (inp[0] == 'y' || inp[0] == 'Y');
+
+        printf("  Serve files to peers? (slow internet: answer n) [Y/n]: ");
+        fflush(stdout);
+        if (!fgets(inp, sizeof(inp), stdin)) return 1;
+        cfg.serve = !(inp[0] == 'n' || inp[0] == 'N');
+
+        printf("  Monthly upload limit [e.g. 50G, Enter = unlimited]: ");
+        fflush(stdout);
+        if (!fgets(inp, sizeof(inp), stdin)) return 1;
+        inp[strcspn(inp, "\r\n")] = '\0';
+        cfg.monthly_limit_bytes = (inp[0] && inp[0] != '0') ? warp_parse_size(inp) : 0;
+
         time_t now = time(NULL);
-        struct tm *tm_info = localtime(&now);
-        strftime(cfg.month_tag, sizeof(cfg.month_tag), "%Y-%m", tm_info);
-
-        if (seed_config_save(&cfg) != WARP_OK) {
-            warp_err("Failed to save config to %s", WARP_SEED_CONF);
-            return 1;
-        }
-        warp_ok("Config saved: %s", WARP_SEED_CONF);
+        strftime(cfg.month_tag, sizeof(cfg.month_tag), "%Y-%m", localtime(&now));
+        cfg.volunteer = 1;
     }
 
-    if (cfg.quota_bytes == 0) {
-        warp_err("No quota set. Use --quota 10G or run --setup.");
+    if (!cfg.unlimited && cfg.quota_bytes == 0) {
+        warp_err("No size limit set. Use --quota 10G (or 10.46G, or all) or run --setup.");
         return 1;
     }
+    cfg.volunteer = 1;
 
-    if (store_init() != WARP_OK) return 1;
+    if (!cfg.consent_asked) stats_ask_consent(&cfg);
 
-    /* If cheap SD mode is active, reload config to apply the RAM path immediately */
-    if (cfg.cheap_sd) {
-        seed_config_load(&cfg);
+    if (apply_config(&cfg) != 0) return 1;
+    warp_ok("Config saved: %s", WARP_SEED_CONF);
+
+    if (p2p_node_signal(0) == WARP_OK) {
+        poke_running_node();
+        return 0;
     }
+    if (no_start) return 0;      /* config only: the seed service starts the node */
 
     printf("\n  " WARP_BOLD "Starting volunteer mode" WARP_RESET "\n");
-    printf("  Quota:    ");
-    if (cfg.quota_bytes >= (size_t)1073741824)
-        printf("%.2f GB\n", (double)cfg.quota_bytes / 1073741824.0);
-    else printf("%.1f MB\n", (double)cfg.quota_bytes / 1048576.0);
+    char q[32];
+    if (cfg.unlimited) snprintf(q, sizeof(q), "unlimited");
+    else               warp_fmt_size(cfg.quota_bytes, q, sizeof(q));
+    printf("  Disk:     %s\n", q);
+    if (cfg.max_packages) printf("  Packages: up to %zu\n", cfg.max_packages);
+    else                  printf("  Packages: no limit\n");
     printf("  Serving:  %s\n", cfg.serve ? "yes" : "no (cache only)");
-    printf("  Cheap SD: %s\n", cfg.cheap_sd ? "yes" : "no");
-    if (cfg.monthly_limit_bytes)
-        printf("  Monthly:  %.2f GB\n\n", (double)cfg.monthly_limit_bytes / 1073741824.0);
-    else printf("  Monthly:  unlimited\n\n");
+    printf("  Cheap SD: %s\n\n", cfg.cheap_sd ? "yes" : "no");
 
-    p2p_volunteer(&cfg, port);
+    if (cfg.cheap_sd) seed_config_load(&cfg);   /* applies the RAM cache path */
+    return run_node(&cfg, port);
+}
+
+/* ── warp stats [--what|--consent|--no-stats|--reset-id|--offline] ─ */
+int cmd_stats(int argc, char **argv) {
+    warp_seed_config_t cfg;
+    int have_cfg = (seed_config_load(&cfg) == WARP_OK);
+    int offline = 0;
+
+    for (int i = 0; i < argc; i++) {
+        const char *a = argv[i];
+        if (strcmp(a, "--what") == 0) {
+            stats_print_disclosure(&cfg);
+            return 0;
+        } else if (strcmp(a, "--consent") == 0) {
+            if (!isatty(STDIN_FILENO)) {
+                stats_print_disclosure(&cfg);
+                warp_err("The question needs a terminal. Run 'warp stats --consent' there.");
+                return 1;
+            }
+            stats_ask_consent(&cfg);
+            if (apply_config(&cfg) != 0) return 1;
+            poke_running_node();
+            return 0;
+        } else if (strcmp(a, "--no-stats") == 0) {
+            cfg.stats_consent = 0;
+            cfg.consent_asked = 1;
+            if (apply_config(&cfg) != 0) return 1;
+            warp_ok("Statistics are off — nothing is sent to the tracker");
+            poke_running_node();
+            return 0;
+        } else if (strcmp(a, "--reset-id") == 0) {
+            cfg.node_id[0] = '\0';
+            stats_ensure_node_id(&cfg);
+            if (apply_config(&cfg) != 0) return 1;
+            warp_ok("New anonymous node id: %s", cfg.node_id);
+            poke_running_node();
+            return 0;
+        } else if (strcmp(a, "--offline") == 0) {
+            offline = 1;
+        } else {
+            warp_err("Unknown option: %s", a);
+            return 1;
+        }
+    }
+
+    (void)have_cfg;
+    stats_print_local(&cfg);
+    if (!offline && stats_fetch_network() != WARP_OK)
+        warp_warn("Tracker unreachable — showing the last data we have");
+    stats_print_network();
     return 0;
 }
 
@@ -877,7 +1029,7 @@ int cmd_pack(int argc, char **argv) {
     json_free(jm); jm = NULL;
 
     char out_name[512];
-    snprintf(out_name, sizeof(out_name), "%s-%s-%s.warp", pkg_name, pkg_ver, WARP_ARCH);
+    snprintf(out_name, sizeof(out_name), "%s-%s-%s.warp", pkg_name, pkg_ver, warp_archive_tag());
 
     /* Create tar.gz */
     char cmd[1024];

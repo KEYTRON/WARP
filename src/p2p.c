@@ -5,21 +5,23 @@
 #include <errno.h>
 #include <signal.h>
 #include <time.h>
+#include <stdint.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <netinet/in.h>
 #include <dirent.h>
+#include <sys/statvfs.h>
 #include <curl/curl.h>
 #include "warp.h"
 
-char g_volunteer_dir[512] = "/var/lib/warp/volunteer";
+char g_volunteer_dir[512] = WARP_STORE_DIR "/volunteer";
 
 /* ══════════════════════════════════════════════════════════════
  *  Size parser  "10G" / "500M" / "50K" → bytes
  * ══════════════════════════════════════════════════════════════ */
 
-static size_t parse_size(const char *s) {
+size_t warp_parse_size(const char *s) {
     if (!s) return 0;
     while (*s == ' ' || *s == '\t') s++;
     if (!*s) return 0;
@@ -35,7 +37,7 @@ static size_t parse_size(const char *s) {
     }
 }
 
-static void fmt_size(size_t bytes, char *buf, size_t bufsz) {
+void warp_fmt_size(size_t bytes, char *buf, size_t bufsz) {
     if      (bytes >= (size_t)1073741824) snprintf(buf, bufsz, "%.2f GB", (double)bytes / 1073741824.0);
     else if (bytes >= (size_t)1048576)    snprintf(buf, bufsz, "%.1f MB", (double)bytes / 1048576.0);
     else if (bytes >= (size_t)1024)       snprintf(buf, bufsz, "%.1f KB", (double)bytes / 1024.0);
@@ -46,9 +48,13 @@ static void fmt_size(size_t bytes, char *buf, size_t bufsz) {
  *  Seed config — load / save
  * ══════════════════════════════════════════════════════════════ */
 
-int seed_config_load(warp_seed_config_t *cfg) {
+void seed_config_defaults(warp_seed_config_t *cfg) {
     memset(cfg, 0, sizeof(*cfg));
     cfg->serve = 1;
+}
+
+int seed_config_load(warp_seed_config_t *cfg) {
+    seed_config_defaults(cfg);
 
     size_t len;
     char *s = read_file(WARP_SEED_CONF, &len);
@@ -63,13 +69,22 @@ int seed_config_load(warp_seed_config_t *cfg) {
     cfg->monthly_limit_bytes = (size_t)json_num(j, "monthly_limit_bytes", 0);
     cfg->monthly_used_bytes  = (size_t)json_num(j, "monthly_used_bytes",  0);
     cfg->cheap_sd            = (int)   json_num(j, "cheap_sd",             0);
+    cfg->volunteer           = (int)   json_num(j, "volunteer",            0);
+    cfg->unlimited           = (int)   json_num(j, "unlimited",            0);
+    cfg->max_packages        = (size_t)json_num(j, "max_packages",         0);
+    cfg->reserve_bytes       = (size_t)json_num(j, "reserve_bytes",        0);
+    cfg->uploaded_total      = (unsigned long long)json_num(j, "uploaded_total", 0);
+    cfg->served_total        = (unsigned long long)json_num(j, "served_total",   0);
+    cfg->stats_consent       = (int)   json_num(j, "stats_consent",        0);
+    cfg->consent_asked       = (int)   json_num(j, "consent_asked",        0);
     strncpy(cfg->month_tag, json_str(j, "month_tag", ""), sizeof(cfg->month_tag) - 1);
+    strncpy(cfg->node_id,   json_str(j, "node_id",   ""), sizeof(cfg->node_id) - 1);
     json_free(j);
 
     if (cfg->cheap_sd) {
         strncpy(g_volunteer_dir, "/tmp/warp-volunteer", sizeof(g_volunteer_dir) - 1);
     } else {
-        strncpy(g_volunteer_dir, "/var/lib/warp/volunteer", sizeof(g_volunteer_dir) - 1);
+        strncpy(g_volunteer_dir, WARP_STORE_DIR "/volunteer", sizeof(g_volunteer_dir) - 1);
     }
 
     /* Reset monthly counter if calendar month rolled over */
@@ -88,7 +103,7 @@ int seed_config_load(warp_seed_config_t *cfg) {
 }
 
 int seed_config_save(const warp_seed_config_t *cfg) {
-    char buf[512];
+    char buf[1024];
     snprintf(buf, sizeof(buf),
         "{\n"
         "  \"quota_bytes\": %zu,\n"
@@ -96,16 +111,33 @@ int seed_config_save(const warp_seed_config_t *cfg) {
         "  \"monthly_limit_bytes\": %zu,\n"
         "  \"monthly_used_bytes\": %zu,\n"
         "  \"cheap_sd\": %d,\n"
-        "  \"month_tag\": \"%s\"\n"
+        "  \"month_tag\": \"%s\",\n"
+        "  \"volunteer\": %d,\n"
+        "  \"unlimited\": %d,\n"
+        "  \"max_packages\": %zu,\n"
+        "  \"reserve_bytes\": %zu,\n"
+        "  \"uploaded_total\": %llu,\n"
+        "  \"served_total\": %llu,\n"
+        "  \"stats_consent\": %d,\n"
+        "  \"consent_asked\": %d,\n"
+        "  \"node_id\": \"%s\"\n"
         "}\n",
         cfg->quota_bytes, cfg->serve,
         cfg->monthly_limit_bytes, cfg->monthly_used_bytes,
-        cfg->cheap_sd, cfg->month_tag);
+        cfg->cheap_sd, cfg->month_tag,
+        cfg->volunteer, cfg->unlimited, cfg->max_packages, cfg->reserve_bytes,
+        cfg->uploaded_total, cfg->served_total,
+        cfg->stats_consent, cfg->consent_asked, cfg->node_id);
 
-    FILE *f = fopen(WARP_SEED_CONF, "w");
+    /* tmp + rename: a crash must not leave half a config (it holds the counters) */
+    char tmp[sizeof(WARP_SEED_CONF) + 8];
+    snprintf(tmp, sizeof(tmp), "%s.tmp", WARP_SEED_CONF);
+    FILE *f = fopen(tmp, "w");
     if (!f) return WARP_ERR_IO;
-    fputs(buf, f);
-    fclose(f);
+    size_t want = strlen(buf);
+    int ok = fwrite(buf, 1, want, f) == want;
+    ok = (fclose(f) == 0) && ok;
+    if (!ok || rename(tmp, WARP_SEED_CONF) != 0) { remove(tmp); return WARP_ERR_IO; }
     return WARP_OK;
 }
 
@@ -128,6 +160,19 @@ size_t volunteer_used_bytes(void) {
     }
     closedir(d);
     return total;
+}
+
+size_t volunteer_count(void) {
+    DIR *d = opendir(g_volunteer_dir);
+    if (!d) return 0;
+    size_t n = 0;
+    struct dirent *ent;
+    while ((ent = readdir(d))) {
+        size_t nl = strlen(ent->d_name);
+        if (nl >= 6 && strcmp(ent->d_name + nl - 5, ".warp") == 0) n++;
+    }
+    closedir(d);
+    return n;
 }
 
 static int volunteer_has_pkg(const char *sha256) {
@@ -206,9 +251,9 @@ static int parse_peer_json(const char *json_src, warp_peer_list_t *out) {
 int p2p_load_peers(warp_peer_list_t *out, const char *list_url) {
     memset(out, 0, sizeof(*out));
 
-    /* Fall back to compiled-in tracker dashboard if index doesn't specify one */
+    /* Fall back to the compiled-in tracker's public peer list (/dashboard is admin-only) */
     if (!list_url || !list_url[0])
-        list_url = WARP_TRACKER_URL "/dashboard";
+        list_url = WARP_TRACKER_URL "/peers";
 
     if (!list_url[0]) return WARP_ERR_NET;
 
@@ -674,7 +719,7 @@ static void seed_serve_pkg(int fd, const char *sha256) {
     if (g_have_seed_cfg &&
         g_seed_cfg.monthly_limit_bytes > 0 &&
         g_seed_cfg.monthly_used_bytes >= g_seed_cfg.monthly_limit_bytes) {
-        char lim[64]; fmt_size(g_seed_cfg.monthly_limit_bytes, lim, sizeof(lim));
+        char lim[64]; warp_fmt_size(g_seed_cfg.monthly_limit_bytes, lim, sizeof(lim));
         warp_warn("Monthly upload limit (%s) reached — not serving", lim);
         const char *r = "HTTP/1.0 503 Monthly Limit Reached\r\n"
                         "Content-Length: 0\r\n\r\n";
@@ -715,6 +760,8 @@ static void seed_serve_pkg(int fd, const char *sha256) {
     /* Track uploaded bytes */
     if (g_have_seed_cfg && bytes_sent > 0) {
         g_seed_cfg.monthly_used_bytes += bytes_sent;
+        g_seed_cfg.uploaded_total     += bytes_sent;
+        g_seed_cfg.served_total++;
         time_t now = time(NULL);
         /* Write to disk at most once per minute to reduce I/O */
         if (now - g_last_cfg_save >= 60) {
@@ -759,11 +806,11 @@ static void seed_handle_request(int fd) {
  *  Volunteer: download low-seeder packages into volunteer cache
  * ══════════════════════════════════════════════════════════════ */
 
-/* Dashboard summary from tracker:
-   { active_peers, total_peers, packages_cached, packages, peers, updated } */
-static json_t *fetch_dashboard(void) {
+/* Seeder counts per package name from the tracker's public /popularity:
+   { "nano": 3, "ripgrep": 1, ... } */
+static json_t *fetch_popularity(void) {
     char url[WARP_MAX_URL];
-    snprintf(url, sizeof(url), "%s/dashboard", WARP_TRACKER_URL);
+    snprintf(url, sizeof(url), "%s/popularity", WARP_TRACKER_URL);
     char *body = warp_download_str(url);
     if (!body) return NULL;
     json_t *j = json_parse(body);
@@ -771,77 +818,93 @@ static json_t *fetch_dashboard(void) {
     return j;
 }
 
-static int dashboard_package_seeders(json_t *dashboard, const char *name) {
-    if (!dashboard || !name || !name[0]) return 0;
+typedef struct { int idx; int seeders; } vol_cand_t;
 
-    json_t *pkgs = json_get(dashboard, "packages");
-    if (!pkgs || pkgs->type != JSON_ARRAY) return 0;
-
-    for (int i = 0; i < pkgs->v.arr.count; i++) {
-        json_t *pkg = pkgs->v.arr.items[i];
-        if (!pkg || pkg->type != JSON_OBJECT) continue;
-        if (strcmp(json_str(pkg, "name", ""), name) == 0)
-            return (int)json_num(pkg, "seeders", 0);
-    }
-
-    return 0;
+/* Least seeded first, index order breaks ties. */
+static int vol_cand_cmp(const void *a, const void *b) {
+    const vol_cand_t *x = a, *y = b;
+    if (x->seeders != y->seeders) return x->seeders - y->seeders;
+    return x->idx - y->idx;
 }
 
-int p2p_volunteer(warp_seed_config_t *cfg, int port) {
+static size_t disk_free_bytes(const char *path) {
+    struct statvfs sv;
+    if (statvfs(path, &sv) != 0) return (size_t)-1;
+    return (size_t)sv.f_bavail * (size_t)sv.f_frsize;
+}
+
+/* Fill the volunteer cache within the user's limits: size, package count
+ * and the disk space that must stay free. Returns the number of new packages. */
+static int volunteer_fill(warp_seed_config_t *cfg) {
     mkdirs(g_volunteer_dir, 0755);
 
-    /* Load index */
     warp_index_t idx;
     if (index_load(&idx, 0) != WARP_OK) {
         warp_err("Cannot load package index");
         return WARP_ERR_IO;
     }
 
-    /* Fetch popularity (best-effort; NULL = proceed without it) */
     warp_info("Fetching package popularity from tracker...");
-    json_t *dash = fetch_dashboard();
-    if (!dash)
+    json_t *pop = fetch_popularity();
+    if (!pop)
         warp_warn("Tracker unreachable — ignoring popularity, using index order");
 
-    size_t used  = volunteer_used_bytes();
-    size_t avail = (cfg->quota_bytes > used) ? cfg->quota_bytes - used : 0;
+    size_t used    = volunteer_used_bytes();
+    size_t have    = volunteer_count();
+    size_t reserve = cfg->reserve_bytes ? cfg->reserve_bytes : WARP_RESERVE_DEFAULT;
+    size_t limit   = cfg->unlimited ? (size_t)-1 : cfg->quota_bytes;
 
     char sz_used[32], sz_quota[32];
-    fmt_size(used,             sz_used,  sizeof(sz_used));
-    fmt_size(cfg->quota_bytes, sz_quota, sizeof(sz_quota));
-    warp_info("Volunteer cache: %s used / %s quota", sz_used, sz_quota);
+    warp_fmt_size(used, sz_used, sizeof(sz_used));
+    if (cfg->unlimited) snprintf(sz_quota, sizeof(sz_quota), "unlimited");
+    else                warp_fmt_size(cfg->quota_bytes, sz_quota, sizeof(sz_quota));
+    if (cfg->max_packages)
+        warp_info("Volunteer cache: %s / %s, %zu / %zu packages",
+                  sz_used, sz_quota, have, cfg->max_packages);
+    else
+        warp_info("Volunteer cache: %s / %s, %zu packages (no count limit)",
+                  sz_used, sz_quota, have);
 
-    if (avail == 0) {
-        warp_warn("Volunteer cache is full — nothing to download");
-        if (dash) json_free(dash);
-        index_free(&idx);
-        return WARP_OK;
+    /* Candidates: not installed, not cached yet; rarely seeded first.
+       "Everything" mode takes well-seeded packages too. */
+    vol_cand_t *cand = calloc((size_t)(idx.count > 0 ? idx.count : 1), sizeof(*cand));
+    int ncand = 0;
+    for (int i = 0; cand && i < idx.count; i++) {
+        warp_pkg_entry_t *e = &idx.entries[i];
+        if (!e->sha256[0] || !e->url[0] || e->versioned) continue;
+        if (store_is_installed(e->name, NULL)) continue;
+        if (volunteer_has_pkg(e->sha256))      continue;
+        int seeders = pop ? (int)json_num(pop, e->name, 0) : 0;
+        if (!cfg->unlimited && seeders >= 5) continue;   /* well seeded already */
+        cand[ncand].idx = i;
+        cand[ncand].seeders = seeders;
+        ncand++;
     }
+    if (ncand > 1) qsort(cand, (size_t)ncand, sizeof(*cand), vol_cand_cmp);
 
     int downloaded = 0;
+    for (int c = 0; c < ncand; c++) {
+        warp_pkg_entry_t *e = &idx.entries[cand[c].idx];
 
-    for (int i = 0; i < idx.count; i++) {
-        warp_pkg_entry_t *e = &idx.entries[i];
-        if (!e->sha256[0] || !e->url[0]) continue;
+        if (cfg->max_packages && have >= cfg->max_packages) {
+            warp_info("Package limit reached (%zu)", cfg->max_packages);
+            break;
+        }
 
-        /* Skip if already installed or volunteered */
-        if (store_is_installed(e->name, NULL))   continue;
-        if (volunteer_has_pkg(e->sha256))         continue;
-
-        /* Skip if package doesn't fit */
-        if (e->size > 0 && (size_t)e->size > avail) continue;
-
-        /* Check seeder count — only help packages with < 5 seeders */
-        int seeders = 0;
-        if (dash)
-            seeders = dashboard_package_seeders(dash, e->name);
-        if (seeders >= 5) continue;   /* well-seeded, no need */
+        size_t room  = (limit == (size_t)-1) ? (size_t)-1 : (limit > used ? limit - used : 0);
+        size_t dfree = disk_free_bytes(g_volunteer_dir);
+        size_t droom = (dfree == (size_t)-1) ? (size_t)-1 : (dfree > reserve ? dfree - reserve : 0);
+        if (droom < room) room = droom;
+        if (room == 0) {
+            warp_warn("No room left (quota or the disk space kept free) — stopping");
+            break;
+        }
+        if (e->size > 0 && (size_t)e->size > room) continue;
 
         char pkg_sz[32];
-        fmt_size((size_t)e->size, pkg_sz, sizeof(pkg_sz));
-        warp_info("Volunteering: " WARP_CYAN "%s %s" WARP_RESET
-                  " (%s, seeders: %d)",
-                  e->name, e->version, pkg_sz, seeders);
+        warp_fmt_size((size_t)e->size, pkg_sz, sizeof(pkg_sz));
+        warp_info("Volunteering: " WARP_CYAN "%s %s" WARP_RESET " (%s, seeders: %d)",
+                  e->name, e->version, pkg_sz, cand[c].seeders);
 
         char dest[600], tmp[620];
         snprintf(dest, sizeof(dest), "%s/%s.warp", g_volunteer_dir, e->sha256);
@@ -853,8 +916,7 @@ int p2p_volunteer(warp_seed_config_t *cfg, int port) {
             remove(tmp);
             continue;
         }
-
-        if (e->sha256[0] && strcmp(dl.computed_sha256, e->sha256) != 0) {
+        if (strcmp(dl.computed_sha256, e->sha256) != 0) {
             warp_warn("  SHA256 mismatch for %s — discarding", e->name);
             remove(tmp);
             continue;
@@ -864,57 +926,83 @@ int p2p_volunteer(warp_seed_config_t *cfg, int port) {
         volunteer_write_meta(e->sha256, e->name, e->version);
 
         long sz = file_size(dest);
-        if (sz > 0) {
-            used  += (size_t)sz;
-            avail  = cfg->quota_bytes > used ? cfg->quota_bytes - used : 0;
-        }
-        warp_ok("Cached: %s", e->name);
+        if (sz > 0) used += (size_t)sz;
+        have++;
         downloaded++;
-
-        if (avail == 0) break;   /* quota full */
+        warp_ok("Cached: %s", e->name);
     }
 
-    if (dash) json_free(dash);
+    free(cand);
+    if (pop) json_free(pop);
     index_free(&idx);
 
-    fmt_size(volunteer_used_bytes(), sz_used, sizeof(sz_used));
+    warp_fmt_size(volunteer_used_bytes(), sz_used, sizeof(sz_used));
     if (downloaded > 0)
-        warp_ok("Volunteered %d package(s) — cache now %s / %s",
-                downloaded, sz_used, sz_quota);
+        warp_ok("Volunteered %d package(s) — cache now %s / %s", downloaded, sz_used, sz_quota);
     else
         warp_info("No new packages to volunteer for");
-
-    /* Announce full cache to tracker so peers know we're seeding */
-    if (cfg->serve) {
-        warp_info("Announcing volunteer node to tracker...");
-        p2p_announce(WARP_TRACKER_URL, NULL, NULL, port, 1);
-    }
-
-    /* Start seed server */
-    if (cfg->serve) {
-        g_seed_cfg      = *cfg;
-        g_have_seed_cfg = 1;
-        g_last_cfg_save = time(NULL);
-        warp_info("Starting seed server (Ctrl+C to stop)...");
-        p2p_seed(port);
-        /* Save final upload count on exit */
-        seed_config_save(&g_seed_cfg);
-    }
-
-    return WARP_OK;
+    return downloaded;
 }
 
-static volatile sig_atomic_t seed_running = 1;
-static void seed_on_signal(int s) { (void)s; seed_running = 0; }
+/* ══════════════════════════════════════════════════════════════
+ *  The node: one process that seeds, and in volunteer mode also fills the
+ *  cache. SIGHUP re-reads the config; SIGTERM/SIGINT stop it.
+ * ══════════════════════════════════════════════════════════════ */
 
-void p2p_seed(int port) {
-    signal(SIGINT,  seed_on_signal);
-    signal(SIGTERM, seed_on_signal);
+static volatile sig_atomic_t node_running = 1;
+static volatile sig_atomic_t node_reload  = 0;
+static void node_on_term(int s) { (void)s; node_running = 0; }
+static void node_on_hup(int s)  { (void)s; node_reload  = 1; }
 
+/* Signal the running node (sig 0 = just check it is alive). The pid file can
+ * be stale and its pid reused, so only a process that is really `warp` is
+ * touched: a stray SIGHUP would kill an unrelated program. */
+int p2p_node_signal(int sig) {
+    size_t len;
+    char *s = read_file(WARP_NODE_PID, &len);
+    if (!s) return WARP_ERR_NOENT;
+    long pid = atol(s);
+    free(s);
+    if (pid <= 1) return WARP_ERR_NOENT;
+
+    char comm_path[64], comm[64] = "";
+    snprintf(comm_path, sizeof(comm_path), "/proc/%ld/comm", pid);
+    FILE *f = fopen(comm_path, "r");
+    if (!f) return WARP_ERR_NOENT;
+    if (fgets(comm, sizeof(comm), f)) comm[strcspn(comm, "\n")] = '\0';
+    fclose(f);
+    if (strcmp(comm, "warp") != 0) return WARP_ERR_NOENT;
+
+    if (sig == 0) return kill((pid_t)pid, 0) == 0 ? WARP_OK : WARP_ERR_NOENT;
+    return kill((pid_t)pid, sig) == 0 ? WARP_OK : WARP_ERR_IO;
+}
+
+static void node_announce(int port) {
+    if (!g_seed_cfg.serve) return;
+    if (p2p_announce(WARP_TRACKER_URL, NULL, NULL, port, g_seed_cfg.volunteer) != WARP_OK)
+        warp_warn("Tracker unreachable — seeding locally only");
+}
+
+/* Settings come from the file, counters stay the ones in memory. */
+static void node_reload_config(void) {
+    warp_seed_config_t fresh;
+    if (seed_config_load(&fresh) != WARP_OK) {
+        warp_warn("Reload: cannot read %s, keeping current settings", WARP_SEED_CONF);
+        return;
+    }
+    fresh.monthly_used_bytes = g_seed_cfg.monthly_used_bytes;
+    fresh.uploaded_total     = g_seed_cfg.uploaded_total;
+    fresh.served_total       = g_seed_cfg.served_total;
+    if (g_seed_cfg.node_id[0]) memcpy(fresh.node_id, g_seed_cfg.node_id, sizeof(fresh.node_id));
+    g_seed_cfg = fresh;
+    warp_info("Config reloaded (volunteer: %s)", g_seed_cfg.volunteer ? "on" : "off");
+}
+
+static int node_serve(int port) {
     int srv = socket(AF_INET, SOCK_STREAM, 0);
     if (srv < 0) {
         warp_err("socket: %s", strerror(errno));
-        return;
+        return WARP_ERR_NET;
     }
 
     int opt = 1;
@@ -928,12 +1016,12 @@ void p2p_seed(int port) {
     if (bind(srv, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         warp_err("bind: %s (port %d)", strerror(errno), port);
         close(srv);
-        return;
+        return WARP_ERR_NET;
     }
     if (listen(srv, 16) < 0) {
         warp_err("listen: %s", strerror(errno));
         close(srv);
-        return;
+        return WARP_ERR_NET;
     }
 
     warp_ok("Seeding on port %d  (Ctrl+C to stop)", port);
@@ -941,30 +1029,92 @@ void p2p_seed(int port) {
     warp_info("Peers fetch: http://<your-ip>:%d/warp/v1/list", port);
     printf("\n");
 
-    while (seed_running) {
+    time_t last_tick = time(NULL), last_fill = last_tick;
+
+    while (node_running) {
         fd_set rfds;
         FD_ZERO(&rfds);
         FD_SET(srv, &rfds);
         struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
 
         int sel = select(srv + 1, &rfds, NULL, NULL, &tv);
-        if (sel < 0) {
-            if (errno == EINTR) continue;
+        if (sel < 0 && errno != EINTR) {
             warp_err("select: %s", strerror(errno));
             break;
         }
-        if (sel == 0) continue;  /* timeout — check seed_running */
 
-        struct sockaddr_in cli_addr;
-        socklen_t cli_len = sizeof(cli_addr);
-        int cli = accept(srv, (struct sockaddr *)&cli_addr, &cli_len);
-        if (cli < 0) continue;
+        if (sel > 0) {
+            struct sockaddr_in cli_addr;
+            socklen_t cli_len = sizeof(cli_addr);
+            int cli = accept(srv, (struct sockaddr *)&cli_addr, &cli_len);
+            if (cli >= 0) {
+                seed_handle_request(cli);
+                close(cli);
+            }
+        }
 
-        seed_handle_request(cli);
-        close(cli);
+        time_t now = time(NULL);
+
+        if (node_reload) {
+            node_reload = 0;
+            node_reload_config();
+            if (g_seed_cfg.volunteer) { volunteer_fill(&g_seed_cfg); last_fill = now; }
+            node_announce(port);
+            stats_report(&g_seed_cfg);
+            last_tick = now;
+        }
+
+        /* Every 5 minutes: keep the tracker's record fresh, save counters, report */
+        if (now - last_tick >= 300) {
+            node_announce(port);
+            stats_report(&g_seed_cfg);
+            seed_config_save(&g_seed_cfg);
+            g_last_cfg_save = now;
+            last_tick = now;
+        }
+
+        /* Volunteer: look for newly rare packages every 6 hours */
+        if (g_seed_cfg.volunteer && now - last_fill >= 6 * 3600) {
+            volunteer_fill(&g_seed_cfg);
+            last_fill = now;
+        }
     }
 
     close(srv);
     printf("\n");
     warp_info("Seeding stopped");
+    return WARP_OK;
+}
+
+int p2p_node_run(warp_seed_config_t *cfg, int port) {
+    if (p2p_node_signal(0) == WARP_OK) {
+        warp_warn("A WARP node is already running — it keeps serving; use SIGHUP to reload.");
+        return WARP_ERR_EXIST;
+    }
+
+    stats_ensure_node_id(cfg);
+    g_seed_cfg      = *cfg;
+    g_have_seed_cfg = 1;
+    g_last_cfg_save = time(NULL);
+
+    FILE *pf = fopen(WARP_NODE_PID, "w");
+    if (pf) { fprintf(pf, "%ld\n", (long)getpid()); fclose(pf); }
+
+    signal(SIGINT,  node_on_term);
+    signal(SIGTERM, node_on_term);
+    signal(SIGHUP,  node_on_hup);
+
+    if (g_seed_cfg.volunteer) volunteer_fill(&g_seed_cfg);
+
+    int rc = WARP_OK;
+    if (g_seed_cfg.serve) {
+        warp_info("Announcing to tracker...");
+        node_announce(port);
+        stats_report(&g_seed_cfg);
+        rc = node_serve(port);
+    }
+
+    seed_config_save(&g_seed_cfg);
+    remove(WARP_NODE_PID);
+    return rc;
 }
