@@ -55,7 +55,12 @@ case "$os" in
                 where="$PREFIX (Termux: no root needed)"
                 ;;
             *)
-                tag="${arch}_static"          # one static binary: glibc and musl alike
+                if [ "$arch" = x86_64 ]; then
+                    tag=x86_64_static         # one static binary: glibc and musl alike
+                else
+                    tag=aarch64               # glibc build; no musl one yet
+                    ls /lib/ld-musl-* >/dev/null 2>&1 && die "no musl build for aarch64 yet"
+                fi
                 prefix=/var/lib/warp
                 bindir=/usr/local/bin
                 where="/usr/local/bin/warp and /var/lib/warp (needs root)"
