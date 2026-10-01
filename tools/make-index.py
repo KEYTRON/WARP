@@ -3,6 +3,10 @@
 
     tools/make-index.py <packages-dir> --base-url URL --key priv.hex [--warp ./warp]
 
+Translated descriptions come from `descriptions.json` next to the archives
+({"ripgrep": {"ru": "...", "de": "..."}}); the English text stays the entry's
+`description`, the others go into a `descriptions` map the client and the site pick from.
+
 Every `name-version-<tag>.warp` in the directory becomes a build of its package
 with its real sha256 and size; descriptions are carried over from the existing
 index.json when present. <tag> names the platform: the architecture alone for
@@ -78,6 +82,11 @@ def main() -> int:
             pass
 
     # name -> platform -> [(version, archive, tag)]
+    translations = {}
+    tr_file = args.packages_dir / "descriptions.json"
+    if tr_file.exists():
+        translations = json.loads(tr_file.read_text(encoding="utf-8"))
+
     found: dict[str, dict[str, list[tuple[str, Path, str]]]] = {}
     for archive in sorted(args.packages_dir.glob("*.warp")):
         m = NAME_RE.match(archive.name)
@@ -152,6 +161,10 @@ def main() -> int:
             deps = old.get(name, {}).get("deps")
             if deps:
                 entry["deps"] = deps
+            tr = translations.get(name) or old.get(name, {}).get("descriptions") or {}
+            tr = {lang: text for lang, text in tr.items() if lang != "en" and text}
+            if tr and only_version is None:
+                entry["descriptions"] = tr
             if legacy:      # the top level stays the linux-x86_64 build for older clients
                 entry.update({k: legacy[k] for k in ("sha256", "size", "url", "deltas") if k in legacy})
             if set(builds) != {LEGACY}:

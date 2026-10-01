@@ -39,7 +39,8 @@ extern const char *g_warp_mirrors[WARP_INDEX_MIRRORS];
 #  endif
 #endif
 #define WARP_PLATFORM    WARP_OS "-" WARP_ARCH
-const char *warp_archive_tag(void);   /* archive name part: "x86_64" on Linux, "android_aarch64" elsewhere */
+const char *warp_archive_tag(void);
+const char *warp_ui_lang(void);        /* "ru", "de", ... from WARP_LANG/LANGUAGE/LC_ALL/LC_MESSAGES/LANG; "en" by default */   /* archive name part: "x86_64" on Linux, "android_aarch64" elsewhere */
 
 /* ── P2P / seeding ───────────────────────────────────────────── */
 #define WARP_PEER_PORT       7777

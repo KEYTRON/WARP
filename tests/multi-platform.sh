@@ -14,6 +14,7 @@ cleanup() { for p in $PIDS; do kill "$p" 2>/dev/null || true; done; rm -rf "$T";
 trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 ok()   { echo "ok: $*"; }
+plain() { sed 's/\x1b\[[0-9;]*m//g'; }
 if command -v ss >/dev/null && ss -ltn | grep -q ":$RP "; then fail "port $RP busy"; fi
 
 # One binary per fake platform, each with its own store.
@@ -45,6 +46,9 @@ mk tool android_aarch64 android-aarch64
 mk x86only x86_64 linux-x86_64
 mk docs noarch any
 
+cat > "$T/repo/descriptions.json" <<'JSON'
+{"tool": {"ru": "Инструмент для проверки", "de": "Werkzeug zum Testen"}}
+JSON
 "$WX" keygen "$T/priv.hex" "$T/pub.hex" >/dev/null
 PUB="$(tr -d '\n' < "$T/pub.hex")"
 python3 "$ROOT/tools/make-index.py" "$T/repo" --base-url "http://127.0.0.1:$RP" --key "$T/priv.hex" --warp "$WX" >/dev/null
@@ -105,6 +109,23 @@ ok "a noarch package installs on every platform"
 "$WA" search x86 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -q "no build for linux-aarch64" || fail "search does not flag it"
 "$WA" info x86only 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -q "none for linux-aarch64" || fail "info does not say"
 ok "search and info say when there is no build"
+
+# 5b. translated descriptions: the index carries them, the client picks the user's language
+python3 - "$T/repo/index.json" <<'PY' || fail "descriptions in the index"
+import json, sys
+t = json.load(open(sys.argv[1]))["packages"]["tool"]
+assert t["descriptions"] == {"ru": "Инструмент для проверки", "de": "Werkzeug zum Testen"}, t.get("descriptions")
+assert "descriptions" not in json.load(open(sys.argv[1]))["packages"]["x86only"]
+PY
+lang() { env -u LANGUAGE -u LC_ALL -u LC_MESSAGES -u WARP_LANG "$@"; }   # the test must not inherit the user's locale
+lang LANG=ru_RU.UTF-8 "$WX" search tool 2>&1 | plain | grep -q "Инструмент для проверки" || fail "LANG=ru did not give the Russian description"
+lang LANGUAGE=de:en LANG=ru_RU.UTF-8 "$WX" search tool 2>&1 | plain | grep -q "Werkzeug zum Testen" || fail "LANGUAGE=de did not give the German description"
+fr="$(lang LANG=fr_FR.UTF-8 "$WX" search tool 2>&1 | plain)"
+case "$fr" in *Инструмент*|*Werkzeug*) fail "an unknown language must fall back to English" ;; esac
+c="$(lang LC_ALL=C LANGUAGE=ru LANG=ru_RU.UTF-8 "$WX" search tool 2>&1 | plain)"
+case "$c" in *Инструмент*|*Werkzeug*) fail "the C locale must stay English" ;; esac
+lang WARP_LANG=de LANG=C "$WX" search tool 2>&1 | plain | grep -q "Werkzeug zum Testen" || fail "WARP_LANG must override the locale"
+ok "package descriptions follow the user's language (ru, de, WARP_LANG), English for C and unknown languages"
 
 # 6. pack names archives by platform
 mkdir -p "$T/pk/files" && printf '{"name":"q","version":"2.0"}\n' > "$T/pk/manifest.json"

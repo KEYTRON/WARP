@@ -102,6 +102,41 @@ static int fetch_and_cache(const warp_repo_t *r) {
     return WARP_ERR_NET;
 }
 
+/* Two-letter language from a value like "ru_RU.UTF-8" or "de:en"; false when empty. */
+static int lang_prefix(const char *v, char out[8]) {
+    size_t n = 0;
+    while (n < 7 && v[n] && v[n] != '_' && v[n] != '.' && v[n] != ':' && v[n] != '@' && v[n] != '-')
+        { out[n] = (char)((v[n] >= 'A' && v[n] <= 'Z') ? v[n] + 32 : v[n]); n++; }
+    out[n] = '\0';
+    return n > 0;
+}
+
+/* Language of the user interface, the way gettext decides it: WARP_LANG wins; the locale
+ * (LC_ALL, LC_MESSAGES, LANG) says C/POSIX = English whatever else is set; otherwise the
+ * LANGUAGE list, then the locale's own language. "en" when nothing is set. */
+const char *warp_ui_lang(void) {
+    static char lang[8];
+    static int done;
+    if (done) return lang;
+    done = 1;
+    snprintf(lang, sizeof(lang), "en");
+
+    const char *forced = getenv("WARP_LANG");
+    if (forced && lang_prefix(forced, lang)) return lang;
+    snprintf(lang, sizeof(lang), "en");
+
+    const char *loc = getenv("LC_ALL");
+    if (!loc || !*loc) loc = getenv("LC_MESSAGES");
+    if (!loc || !*loc) loc = getenv("LANG");
+    if (loc && (strcmp(loc, "C") == 0 || strcmp(loc, "POSIX") == 0)) return lang;
+
+    const char *list = getenv("LANGUAGE");
+    if (list && lang_prefix(list, lang)) return lang;
+    if (loc && lang_prefix(loc, lang)) return lang;
+    snprintf(lang, sizeof(lang), "en");
+    return lang;
+}
+
 /* The part of an entry that differs per build: version, archive, deltas, deps.
  * `src` is the build object (or the entry itself for a legacy index);
  * `top` supplies what a build leaves out. */
@@ -158,6 +193,12 @@ static void parse_entry(json_t *pkg, const warp_repo_t *r, warp_pkg_entry_t *e) 
     e->versioned = at != NULL;
     strncpy(e->description, json_str(pkg, "description", ""),  sizeof(e->description)-1);
     strncpy(e->repo,        r->name,                           WARP_REPO_NAME-1);
+    /* The description in the user's language, when the index has one (English is the default). */
+    json_t *tr = json_get(pkg, "descriptions");
+    if (tr && tr->type == JSON_OBJECT && strcmp(warp_ui_lang(), "en") != 0) {
+        const char *t = json_str(tr, warp_ui_lang(), "");
+        if (*t) strncpy(e->description, t, sizeof(e->description)-1);
+    }
 
     json_t *builds = json_get(pkg, "builds");
     if (builds && builds->type == JSON_OBJECT) {
