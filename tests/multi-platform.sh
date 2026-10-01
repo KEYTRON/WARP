@@ -60,7 +60,7 @@ JSON
 PUB="$(tr -d '\n' < "$T/pub.hex")"
 python3 "$ROOT/tools/make-index.py" "$T/repo" --base-url "http://127.0.0.1:$RP" --key "$T/priv.hex" --warp "$WX" >/dev/null
 python3 -m http.server "$RP" --bind 127.0.0.1 --directory "$T/repo" >"$T/http.log" 2>&1 & PIDS="$PIDS $!"
-sleep 1
+until curl -s -o /dev/null "http://127.0.0.1:$RP/"; do n=$((${n:-0}+1)); [ "$n" -gt 100 ] && { echo "FAIL: http server did not start" >&2; exit 1; }; sleep 0.2; done; n=0
 
 # 1. the index: builds per platform, legacy top level, old format when only x86_64
 python3 - "$T/repo/index.json" <<'PY' || fail "index structure"

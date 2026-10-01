@@ -33,7 +33,7 @@ for v in 1.0 1.1 2.0; do
     tar -C "$d" -cf - manifest.json files | gzip -n > "$T/repo/tool-$v-$TAG.warp"
 done
 "$W" keygen "$T/priv.hex" "$T/pub.hex" >/dev/null
-serve() { python3 -m http.server "$RP" --bind 127.0.0.1 --directory "$T/repo" >"$T/http.log" 2>&1 & HTTP=$!; sleep 1; }
+serve() { python3 -m http.server "$RP" --bind 127.0.0.1 --directory "$T/repo" >"$T/http.log" 2>&1 & HTTP=$!; until curl -s -o /dev/null "http://127.0.0.1:$RP/"; do n=$((${n:-0}+1)); [ "$n" -gt 100 ] && { echo "FAIL: http server did not start" >&2; exit 1; }; sleep 0.2; done; n=0; }
 python3 "$ROOT/tools/make-index.py" "$T/repo" --base-url "http://127.0.0.1:$RP" --key "$T/priv.hex" --warp "$W" --keep-old-versions --no-deltas >/dev/null
 serve
 "$W" repo add lab "http://127.0.0.1:$RP" --pubkey "$(tr -d '\n' < "$T/pub.hex")" >/dev/null

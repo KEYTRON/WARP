@@ -67,7 +67,7 @@ done
 "$W" keygen "$T/priv.hex" "$T/pub.hex" >/dev/null
 python3 "$ROOT/tools/make-index.py" "$T/repo" --base-url "http://127.0.0.1:$RP" --key "$T/priv.hex" --warp "$W" >/dev/null
 python3 -m http.server "$RP" --bind 127.0.0.1 --directory "$T/repo" >"$T/http.log" 2>&1 & PIDS="$PIDS $!"
-sleep 1
+until curl -s -o /dev/null "http://127.0.0.1:$RP/"; do n=$((${n:-0}+1)); [ "$n" -gt 100 ] && { echo "FAIL: http server did not start" >&2; exit 1; }; sleep 0.2; done; n=0
 "$W" repo disable k1os >/dev/null 2>&1 || true
 "$W" repo add lab "http://127.0.0.1:$RP" --pubkey "$(tr -d '\n' < "$T/pub.hex")" >/dev/null
 "$W" update >/dev/null || fail "warp update"
