@@ -984,7 +984,8 @@ int p2p_node_signal(int sig) {
 #endif
     if (strcmp(comm, "warp") != 0) return WARP_ERR_NOENT;
 
-    if (sig == 0) return kill((pid_t)pid, 0) == 0 ? WARP_OK : WARP_ERR_NOENT;
+    /* EPERM: the node runs as root and we are a user asking "is it up?" - it is. */
+    if (sig == 0) return (kill((pid_t)pid, 0) == 0 || errno == EPERM) ? WARP_OK : WARP_ERR_NOENT;
     return kill((pid_t)pid, sig) == 0 ? WARP_OK : WARP_ERR_IO;
 }
 
