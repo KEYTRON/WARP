@@ -6,7 +6,7 @@
 #include <sys/types.h>
 
 /* ── version & paths ─────────────────────────────────────────── */
-#define WARP_VERSION     "0.4.5"
+#define WARP_VERSION     "0.4.6"
 /* Where things live. Linux: /var/lib/warp and /usr/local/bin (root). macOS: a prefix owned by the
  * user, /opt/warp (like Homebrew's), so nothing is installed by root afterwards and `warp shellenv`
  * puts /opt/warp/bin on the PATH. Termux: under $PREFIX, there is no root and no /tmp there. */

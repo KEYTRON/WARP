@@ -1,6 +1,6 @@
 # WARP roadmap
 
-Stage: 0.4.5
+Stage: 0.4.6
 
 Stages go in order: `[x]` is done, `[ ]` is planned. The current stage is the first unfinished one.
 
@@ -50,7 +50,7 @@ All packages are built for x86_64 today, and the architecture exists only in the
 - [x] Platform in the index (`builds` per `<os>-<arch>`): the client takes only the build for its own OS and CPU and never compiles
 - [ ] Packages and CI for aarch64 (WARP itself builds and passes its tests on linux/aarch64 in an OrbStack machine on the MacBook; `allan` is published for it; a runner and more packages are still to do)
 - [ ] riscv64 — once there is real hardware to test on
-- [ ] The C library in the platform. glibc, musl (Alpine, Void musl) and bionic (Android) are different ABIs, and Void Linux ships both glibc and musl: today `linux-x86_64` means glibc, so a musl machine would take a build that cannot even start (checked: the dynamic build on Void musl answers "not found"). Decision: the platform learns the C library, detected at run time (the interpreter of `/bin/sh`), not at build time. Builds: `linux-x86_64` (glibc, as before), `linux-x86_64-musl`, and `linux-x86_64-static` for a fully static build that runs on every Linux. The client takes its exact libc first and the static build second; a musl machine never takes a glibc build. Fully static packages (Go, Rust, upstream static builds such as ripgrep, jq, btop) are published once as `static`. WARP itself ships as a static binary (`tools/build-static.sh`: works on Gentoo glibc and Void musl alike). The survey and the site switchers learn the libc too
+- [x] The C library in the platform. glibc, musl (Alpine, Void musl) and bionic (Android) are different ABIs, and Void Linux ships both glibc and musl: today `linux-x86_64` means glibc, so a musl machine would take a build that cannot even start (checked: the dynamic build on Void musl answers "not found"). Decision: the platform learns the C library, detected at run time (the interpreter of `/bin/sh`), not at build time. Builds: `linux-x86_64` (glibc, as before), `linux-x86_64-musl`, and `linux-x86_64-static` for a fully static build that runs on every Linux. The client takes its exact libc first and the static build second; a musl machine never takes a glibc build. Fully static packages (Go, Rust, upstream static builds such as ripgrep, jq, btop) are published once as `static`. WARP itself ships as a static binary (`tools/build-static.sh`: works on Gentoo glibc and Void musl alike). The survey learns the libc too (report schema 3, musl is its own platform). Done in 0.4.6: the client detects the libc, `WARP_LIBC` overrides it, `warp platform --all` lists the candidates; the k1os static packages are tagged `_static` and the top level of the index falls back to them for older clients
 - [x] CI runners for the other platforms: native macOS (`macos-arm64`), linux/aarch64 (ten `k1arm-<distro>` runners in the OrbStack machine on the MacBook), and the phone. Every distro now builds on x86_64 and arm through one matrix workflow (`.github/workflows/warp-distros.yml`); the ten per-distro workflows stay as `workflow_dispatch` for debugging one distro alone
 
 ## Versions side by side (idea from the user, 2026-10-01)
@@ -66,18 +66,18 @@ Today several versions already sit in the store (`store/<name>-<hash12>`), but o
 Checked on Apple Silicon without Homebrew: WARP builds with the Command Line Tools alone, links only the system `libcurl` and `libSystem`, knows it is `macos-aarch64`, verifies a real signed index and refuses a package without a macOS build with a clear message.
 - [x] No OpenSSL (own SHA-256, vendored Ed25519), so nothing but the Command Line Tools is needed to build
 - [x] The CA bundle is looked up per system (macOS keeps it in `/etc/ssl/cert.pem`)
-- [ ] A user-owned prefix with no root (`~/.warp` or `/opt/warp`), `warp shellenv` for the shell profile
-- [ ] An installer: one command that explains what it does, waits for Enter, fetches the prebuilt `macos-aarch64` binary and shows the pinned key fingerprint to compare with the site; a `.pkg` for managed installs later
-- [ ] System facts for the survey on macOS (`sysctl`: OS version, CPU, cores, memory)
-- [ ] The first packages built for `macos-aarch64` (ripgrep, jq, btop from the upstream releases) and published with a `builds` entry
+- [x] A user-owned prefix with no root (`~/.warp` or `/opt/warp`), `warp shellenv` for the shell profile — done: `/opt/warp` on macOS, `$PREFIX` in Termux, `warp shellenv` prints the PATH line
+- [x] An installer: one command that explains what it does, waits for Enter, fetches the prebuilt `macos-aarch64` binary and shows the pinned key fingerprint to compare with the site; a `.pkg` for managed installs later — done: `tools/install.sh` (also for Linux and Termux); warp itself fetches the signed index afterwards
+- [x] System facts for the survey on macOS (`sysctl`: OS version, CPU, cores, memory) — done
+- [x] The first packages built for `macos-aarch64` (ripgrep and jq from the upstream releases; btop publishes no macOS build) and published with a `builds` entry — done
 - [ ] Portable tests (no GNU-only `tar -I`, `timeout`, `stat -c`)
 - [x] Two CI runners on the MacBook: the native macOS one builds with `make` on Apple Silicon and runs the crypto vectors, the linux/aarch64 one lives in the OrbStack machine and builds the distro images. Docker for the arm builds is installed inside that machine; OrbStack on the MacBook itself is the engine for the native runner
 - [ ] Longer term: replace Homebrew on this machine with WARP (the repository becomes the base repository)
 
 ## Termux (Android)
 WARP was started there by accident (0.4.1 built from source and ran); SSH access to the phone exists, so it can be tested directly.
-- [ ] Prefix-aware paths: store, binaries and temporary files under `$PREFIX` (no `/var/lib`, no `/usr/local/bin`, no root); the CA bundle at `$PREFIX/etc/tls/cert.pem` (found since 0.4.5)
-- [ ] Installer for Termux (`pkg`-free, prebuilt `android-aarch64` binary)
+- [x] Prefix-aware paths: store, binaries and temporary files under `$PREFIX` (no `/var/lib`, no `/usr/local/bin`, no root); the CA bundle at `$PREFIX/etc/tls/cert.pem` (found since 0.4.5) — done: `$PREFIX/var/lib/warp`, `$PREFIX/bin`, `$PREFIX/tmp`
+- [x] Installer for Termux (`pkg`-free, prebuilt `android-aarch64` binary) — done: the same `tools/install.sh`
 - [ ] The first `android-aarch64` packages (static Go and Rust binaries)
 - [x] CI on the phone, started by hand when it is at home and charging, so it does not drain the battery away from home. There is deliberately **no runner on the phone**: the Actions runner is a .NET program and does not run on Android's Bionic libc. The `warp-termux.yml` workflow runs on the lab PC (already on the tailnet) and drives the phone over SSH on port 8022; the build itself is native, `make` with clang, no proot and no glibc
 

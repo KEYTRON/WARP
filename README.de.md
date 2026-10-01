@@ -52,6 +52,19 @@ sudo make install       # oder sudo ./build.sh install
 
 Die Binärdatei landet in `/usr/local/bin/warp`; mit `PREFIX` lässt sich ein anderer Ort wählen.
 
+Ohne Compiler, unter Linux, macOS (Apple Silicon) und Termux, gibt es den Installer. Er erklärt, was er
+tut, wartet auf Enter, lädt die fertige Binärdatei über HTTPS, prüft die sha256, lässt `warp update`
+den signierten Index holen und gibt den Schlüssel aus, dem warp vertraut, damit er mit dem auf der
+Projektseite verglichen werden kann:
+
+```bash
+curl -fsSL https://keytron-prime.org/packages/install.sh | sh
+```
+
+Wo warp liegt, hängt vom System ab: `/var/lib/warp` und `/usr/local/bin` unter Linux (Root), `/opt/warp`
+unter macOS (einmal per `sudo` zu Ihrem gemacht, danach braucht nichts mehr Root; die Zeile
+`eval "$(warp shellenv)"` ins Shell-Profil), `$PREFIX` in Termux (ohne Root).
+
 ## Befehle
 
 | Befehl | Was er tut |
@@ -159,6 +172,13 @@ Architekturunabhängige Pakete (Skripte, Daten) werden einmal als `any` veröffe
 Archive heißen unter Linux `name-version-<arch>.warp` (x86_64, aarch64) und sonst
 `name-version-<os>_<arch>.warp` (`android_aarch64`); `noarch` heißt: jede Plattform.
 `tools/make-index.py` gruppiert sie nach Plattform.
+
+Die Plattform hat auch einen Teil für die C-Bibliothek, den der Client zur Laufzeit von der Maschine liest
+(der Interpreter von `/bin/sh`; `WARP_LIBC=glibc|musl` überschreibt ihn). Builds heißen `linux-x86_64`
+(glibc), `linux-x86_64-musl` und `linux-x86_64-static` (läuft überall). Eine Maschine nimmt zuerst den Build
+für ihre eigene libc und danach einen statischen; eine musl-Maschine nimmt nie einen glibc-Build.
+`warp platform --all` listet die Kandidaten. Archive heißen `name-version-x86_64_musl.warp` und
+`name-version-x86_64_static.warp`.
 
 Paketbeschreibungen kommen in der Sprache des Benutzers, wenn der Index sie enthält: Ein
 Eintrag kann neben der englischen `description` eine Map `descriptions` tragen

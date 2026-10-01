@@ -1,6 +1,6 @@
 # WARP-Roadmap
 
-Stand: 0.4.5
+Stand: 0.4.6
 
 Auch auf [English](ROADMAP.md) und [Русский](ROADMAP.ru.md).
 
@@ -52,7 +52,7 @@ Alle Pakete werden heute für x86_64 gebaut, und die Architektur steckt nur im A
 - [x] Plattform im Index (`builds` pro `<os>-<arch>`): Der Client nimmt nur den Build für sein eigenes Betriebssystem und seine CPU und kompiliert nie
 - [ ] Pakete und CI für aarch64 (WARP baut sich selbst und besteht seine Tests unter linux/aarch64 in einer OrbStack-Maschine auf dem MacBook; `allan` ist dafür veröffentlicht; ein Runner und weitere Pakete stehen noch aus)
 - [ ] riscv64 — sobald es echte Hardware zum Testen gibt
-- [ ] Die C-Bibliothek in der Plattform. glibc, musl (Alpine, Void musl) und bionic (Android) sind verschiedene ABIs, und Void Linux liefert sowohl glibc als auch musl: Heute bedeutet `linux-x86_64` glibc, sodass ein musl-Rechner einen Build nähme, der nicht einmal startet (geprüft: der dynamische Build antwortet auf Void musl mit „not found“). Entscheidung: Die Plattform lernt die C-Bibliothek, erkannt zur Laufzeit (der Interpreter von `/bin/sh`), nicht beim Bauen. Builds: `linux-x86_64` (glibc, wie bisher), `linux-x86_64-musl` und `linux-x86_64-static` für einen vollständig statischen Build, der auf jedem Linux läuft. Der Client nimmt zuerst seine genaue libc und danach den statischen Build; ein musl-Rechner nimmt nie einen glibc-Build. Vollständig statische Pakete (Go, Rust, offizielle statische Builds wie ripgrep, jq, btop) werden einmal als `static` veröffentlicht. WARP selbst wird als statische Binärdatei ausgeliefert (`tools/build-static.sh`: läuft auf Gentoo mit glibc und auf Void musl gleichermaßen). Umfrage und Umschalter auf der Seite lernen die libc ebenfalls
+- [x] Die C-Bibliothek in der Plattform. glibc, musl (Alpine, Void musl) und bionic (Android) sind verschiedene ABIs, und Void Linux liefert sowohl glibc als auch musl: Heute bedeutet `linux-x86_64` glibc, sodass ein musl-Rechner einen Build nähme, der nicht einmal startet (geprüft: der dynamische Build antwortet auf Void musl mit „not found“). Entscheidung: Die Plattform lernt die C-Bibliothek, erkannt zur Laufzeit (der Interpreter von `/bin/sh`), nicht beim Bauen. Builds: `linux-x86_64` (glibc, wie bisher), `linux-x86_64-musl` und `linux-x86_64-static` für einen vollständig statischen Build, der auf jedem Linux läuft. Der Client nimmt zuerst seine genaue libc und danach den statischen Build; ein musl-Rechner nimmt nie einen glibc-Build. Vollständig statische Pakete (Go, Rust, offizielle statische Builds wie ripgrep, jq, btop) werden einmal als `static` veröffentlicht. WARP selbst wird als statische Binärdatei ausgeliefert (`tools/build-static.sh`: läuft auf Gentoo mit glibc und auf Void musl gleichermaßen). Die Umfrage lernt die libc ebenfalls (Berichtsschema 3, musl ist eine eigene Plattform). Erledigt in 0.4.6: Der Client erkennt die libc, `WARP_LIBC` überschreibt sie, `warp platform --all` listet die Kandidaten; die statischen k1os-Pakete tragen `_static`, und die oberste Ebene des Index fällt für ältere Clients darauf zurück
 - [ ] CI-Runner für die anderen Plattformen (jeder wird ein eigener Workflow, damit der CI-Block auf der Seite ihn zeigt): natives macOS (auf dem MacBook), linux/aarch64 (die OrbStack-Maschine auf dem MacBook ist bereit), Termux (noch keiner; wird von Hand gestartet, wenn das Telefon zu Hause am Ladegerät ist, damit es unterwegs nicht den Akku leert)
 
 ## Versionen nebeneinander (Idee des Benutzers, 2026-10-01)
@@ -68,18 +68,18 @@ Heute liegen schon mehrere Versionen im Speicher (`store/<Name>-<hash12>`), aber
 Auf Apple Silicon ohne Homebrew geprüft: WARP baut allein mit den Command Line Tools, linkt nur die System-`libcurl` und `libSystem`, weiß, dass es `macos-aarch64` ist, prüft einen echten signierten Index und lehnt ein Paket ohne macOS-Build mit einer klaren Meldung ab.
 - [x] Kein OpenSSL (eigenes SHA-256, mitgeliefertes Ed25519), sodass zum Bauen nur die Command Line Tools nötig sind
 - [x] Das CA-Bündel wird pro System gesucht (macOS hält es in `/etc/ssl/cert.pem`)
-- [ ] Ein Präfix im Besitz des Benutzers ohne Root (`~/.warp` oder `/opt/warp`), `warp shellenv` für das Shell-Profil
-- [ ] Ein Installer: ein Befehl, der erklärt, was er tut, auf Enter wartet, die fertige `macos-aarch64`-Binärdatei holt und den Fingerabdruck des festgelegten Schlüssels zum Abgleich mit der Seite zeigt; später ein `.pkg` für verwaltete Installationen
-- [ ] Systemangaben für die Umfrage unter macOS (`sysctl`: Betriebssystemversion, CPU, Kerne, Speicher)
-- [ ] Die ersten für `macos-aarch64` gebauten Pakete (ripgrep, jq, btop aus den offiziellen Releases), veröffentlicht mit einem `builds`-Eintrag
+- [x] Ein Präfix im Besitz des Benutzers ohne Root (`~/.warp` oder `/opt/warp`), `warp shellenv` für das Shell-Profil — erledigt: `/opt/warp` unter macOS, `$PREFIX` in Termux, `warp shellenv` gibt die PATH-Zeile aus
+- [x] Ein Installer: ein Befehl, der erklärt, was er tut, auf Enter wartet, die fertige `macos-aarch64`-Binärdatei holt und den Fingerabdruck des festgelegten Schlüssels zum Abgleich mit der Seite zeigt; später ein `.pkg` für verwaltete Installationen — erledigt: `tools/install.sh` (auch für Linux und Termux); den signierten Index holt warp danach selbst
+- [x] Systemangaben für die Umfrage unter macOS (`sysctl`: Betriebssystemversion, CPU, Kerne, Speicher) — erledigt
+- [x] Die ersten für `macos-aarch64` gebauten Pakete (ripgrep und jq aus den offiziellen Releases; btop veröffentlicht keinen macOS-Build), veröffentlicht mit einem `builds`-Eintrag — erledigt
 - [ ] Portable Tests (kein GNU-spezifisches `tar -I`, `timeout`, `stat -c`)
 - [ ] Zwei CI-Runner auf dem MacBook: ein nativer macOS-Runner und der linux/aarch64-Runner (die OrbStack-Maschine, schon vorbereitet)
 - [ ] Langfristig: Homebrew auf diesem Rechner durch WARP ersetzen (das Repository wird zum Basis-Repository)
 
 ## Termux (Android)
 WARP wurde dort versehentlich gestartet (0.4.1 aus dem Quelltext gebaut und lief); ein SSH-Zugang zum Telefon besteht, es lässt sich also direkt testen.
-- [ ] Präfixbewusste Pfade: Speicher, Binärdateien und temporäre Dateien unter `$PREFIX` (kein `/var/lib`, kein `/usr/local/bin`, kein Root); das CA-Bündel unter `$PREFIX/etc/tls/cert.pem` (wird seit 0.4.5 gefunden)
-- [ ] Installer für Termux (ohne `pkg`, fertige `android-aarch64`-Binärdatei)
+- [x] Präfixbewusste Pfade: Speicher, Binärdateien und temporäre Dateien unter `$PREFIX` (kein `/var/lib`, kein `/usr/local/bin`, kein Root); das CA-Bündel unter `$PREFIX/etc/tls/cert.pem` (wird seit 0.4.5 gefunden) — erledigt: `$PREFIX/var/lib/warp`, `$PREFIX/bin`, `$PREFIX/tmp`
+- [x] Installer für Termux (ohne `pkg`, fertige `android-aarch64`-Binärdatei) — erledigt: derselbe `tools/install.sh`
 - [ ] Die ersten `android-aarch64`-Pakete (statische Go- und Rust-Binärdateien)
 - [ ] Ein CI-Runner auf dem Telefon, der von Hand gestartet wird, wenn es zu Hause am Ladegerät ist, damit er unterwegs nicht den Akku leert
 
