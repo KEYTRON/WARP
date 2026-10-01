@@ -1,9 +1,13 @@
 FROM artixlinux/artixlinux:latest AS build
 
+# libngtcp2 is listed on purpose: `pacman -Sy` on its own leaves libcurl.so.4
+# from the repository next to the older libngtcp2, and pacman then dies with
+# "undefined symbol: ngtcp2_conn_get_tls_early_data_rejected2".
 RUN yes | pacman -Sy --needed \
     base-devel \
     ca-certificates \
     curl \
+    libngtcp2 \
     pkgconf \
     && yes | pacman -Scc
 
@@ -16,6 +20,7 @@ FROM artixlinux/artixlinux:latest
 RUN yes | pacman -Sy --needed \
     ca-certificates \
     curl \
+    libngtcp2 \
     && yes | pacman -Scc
 
 WORKDIR /workspace

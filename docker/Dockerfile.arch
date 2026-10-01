@@ -1,6 +1,9 @@
 FROM archlinux:latest AS build
 
-RUN yes | pacman -Sy --needed \
+# `pacman -Sy` alone is a partial upgrade: libcurl.so.4 arrives from the
+# repository while ngtcp2 stays old, and every pacman call then dies with
+# "undefined symbol: ngtcp2_conn_get_tls_early_data_rejected2".
+RUN yes | pacman -Syu --needed \
     base-devel \
     ca-certificates \
     curl \
@@ -13,7 +16,7 @@ RUN make -j"$(nproc)"
 
 FROM archlinux:latest
 
-RUN yes | pacman -Sy --needed \
+RUN yes | pacman -Syu --needed \
     ca-certificates \
     curl \
     && yes | pacman -Scc
