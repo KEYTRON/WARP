@@ -31,6 +31,8 @@ jobs:
 
       - name: Node, volunteer limits and opt-in statistics
         run: sh tests/node-stats.sh
+      - name: Dead peers do not stall an install
+        run: sh tests/dead-peer.sh
 
       - name: Pull K1OS image
         run: docker pull ghcr.io/keytron/k1os:latest

@@ -1,6 +1,6 @@
 # WARP-Roadmap
 
-Stand: 0.4.7
+Stand: 0.4.8
 
 Auch auf [English](ROADMAP.md) und [Русский](ROADMAP.ru.md).
 

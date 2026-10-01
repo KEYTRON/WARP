@@ -94,6 +94,11 @@ int warp_download(const char *url, const char *dest_path, warp_dl_opts_t *opts) 
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION,   1L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT,        "warp/" WARP_VERSION);
     curl_easy_setopt(curl, CURLOPT_FAILONERROR,      1L);
+    /* A dead host must cost seconds, not minutes: no total time limit (packages can be big),
+     * but a connection that never opens or stalls is dropped. */
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT,   (long)(opts && opts->connect_timeout > 0 ? opts->connect_timeout : 15));
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT,  1000L);
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME,   (long)(opts && opts->stall_timeout > 0 ? opts->stall_timeout : 30));
     if (warp_ca_bundle()) curl_easy_setopt(curl, CURLOPT_CAINFO, warp_ca_bundle());
 
     CURLcode res = curl_easy_perform(curl);
@@ -171,6 +176,8 @@ char *warp_download_str(const char *url) {
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT,      "warp/" WARP_VERSION);
     curl_easy_setopt(curl, CURLOPT_FAILONERROR,    1L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT,        30L);      /* indexes and peer lists are small */
     if (warp_ca_bundle()) curl_easy_setopt(curl, CURLOPT_CAINFO, warp_ca_bundle());
 
     CURLcode res = curl_easy_perform(curl);

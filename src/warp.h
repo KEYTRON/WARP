@@ -6,7 +6,7 @@
 #include <sys/types.h>
 
 /* ── version & paths ─────────────────────────────────────────── */
-#define WARP_VERSION     "0.4.7"
+#define WARP_VERSION     "0.4.8"
 /* Where things live. Linux: /var/lib/warp and /usr/local/bin (root). macOS: a prefix owned by the
  * user, /opt/warp (like Homebrew's), so nothing is installed by root afterwards and `warp shellenv`
  * puts /opt/warp/bin on the PATH. Termux: under $PREFIX, there is no root and no /tmp there. */
@@ -293,6 +293,8 @@ void        json_free(json_t *node);
 /* ── download.h (inline) ─────────────────────────────────────── */
 typedef struct {
     int   show_progress;
+    int   connect_timeout;   /* seconds to establish the connection; 0 = 15 */
+    int   stall_timeout;     /* abort after this many seconds below 1 KB/s; 0 = 30 */
     char  computed_sha256[WARP_SHA256_HEX];   /* filled after download */
 } warp_dl_opts_t;
 

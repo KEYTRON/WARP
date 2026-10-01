@@ -35,5 +35,7 @@ jobs:
         run: sh tests/multi-platform.sh
       - name: Node and anonymous statistics
         run: sh tests/node-stats.sh
+      - name: Dead peers do not stall an install
+        run: sh tests/dead-peer.sh
       - name: Report what the node would send
         run: ./warp stats --what || true

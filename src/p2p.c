@@ -330,22 +330,9 @@ int p2p_download(const char *pkg_name, const char *sha256_expected,
         char tmp[512];
         snprintf(tmp, sizeof(tmp), "%s.p2p%d", dest_path, i);
 
-        warp_dl_opts_t dl = { .show_progress = 1 };
+        /* A dead peer must not stall the install: short connect and stall limits. */
+        warp_dl_opts_t dl = { .show_progress = 1, .connect_timeout = 3, .stall_timeout = 10 };
 
-        CURL *curl = curl_easy_init();
-        if (!curl) continue;
-
-        FILE *fp = fopen(tmp, "wb");
-        if (!fp) { curl_easy_cleanup(curl); continue; }
-
-        /* Reuse existing download infrastructure via warp_download */
-        fclose(fp);
-        curl_easy_cleanup(curl);
-
-        /* Set short timeout so a dead peer doesn't stall everything */
-        /* warp_download uses libcurl defaults; we call it directly and
-           rely on CURLOPT_TIMEOUT via env or accept the default.
-           For simplicity, delegate to warp_download then verify. */
         int rc = warp_download(url, tmp, &dl);
         if (rc != WARP_OK) {
             warp_warn("  Peer %d: connection failed", i + 1);
