@@ -38,13 +38,10 @@ jobs:
           if ! command -v ssh >/dev/null; then
             apt-get update -qq && apt-get install -y -qq --no-install-recommends openssh-client
           fi
+          # The key for the phone is mounted read-only by the runner container
+          # (ci/runner/docker-compose.yml), not taken from a secret.
           install -m 700 -d ~/.ssh
-          printf '%s\n' "$TERMUX_SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          # The phone's host key changes if Termux is reinstalled, so accept it
-          # on first contact instead of pinning a key that would go stale.
-          printf '%s\n' "$TERMUX_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
+          install -m 600 /runner/termux_ci ~/.ssh/id_ed25519
 
       - name: Report the phone
         run: |
