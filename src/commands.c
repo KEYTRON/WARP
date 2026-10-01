@@ -216,7 +216,7 @@ static int install_entry(const warp_index_t *idx, const warp_pkg_entry_t *entry,
     /* WARP installs prebuilt packages only: no build for this OS/CPU means no
      * install, never a download of someone else's binary or a local compile. */
     if (entry->no_build) {
-        warp_err("'%s' has no build for %s", entry->name, WARP_PLATFORM);
+        warp_err("'%s' has no build for %s", entry->name, warp_platform());
         if (entry->available[0]) warp_err("It is published for: %s", entry->available);
         warp_err("WARP installs prebuilt packages and does not compile anything");
         return WARP_ERR_NOENT;
@@ -378,7 +378,7 @@ int cmd_upgrade(int argc, char **argv) {
             continue;
         }
         if (entry.no_build) {
-            warp_warn("%s: no build for %s in the index, keeping %s", list[i].name, WARP_PLATFORM, list[i].version);
+            warp_warn("%s: no build for %s in the index, keeping %s", list[i].name, warp_platform(), list[i].version);
             continue;
         }
         char have[WARP_SHA256_HEX] = "";
@@ -585,8 +585,10 @@ int cmd_search(int argc, char **argv) {
                "Package", "Version", "Description");
         for (int i = 0; i < count; i++) {
             /* Mark installed */
+            char nb[96];
+            snprintf(nb, sizeof(nb), WARP_YELLOW " [no build for %s]" WARP_RESET, warp_platform());
             const char *marker = results[i].no_build
-                                  ? WARP_YELLOW " [no build for " WARP_PLATFORM "]" WARP_RESET
+                                  ? nb
                                   : store_is_installed(results[i].name, NULL)
                                   ? WARP_GREEN " [installed]" WARP_RESET : "";
             printf("  " WARP_CYAN "%-20s" WARP_RESET " %-12s %s%s\n",
@@ -634,10 +636,10 @@ int cmd_info(int argc, char **argv) {
             if (!installed) printf("\n  " WARP_BOLD "%s" WARP_RESET "\n", name);
             printf("  Latest:     %s\n", entry.version);
             if (entry.no_build) {
-                printf("  Build:      none for %s (published for: %s)\n\n", WARP_PLATFORM,
+                printf("  Build:      none for %s (published for: %s)\n\n", warp_platform(),
                        entry.available[0] ? entry.available : "?");
             } else {
-                printf("  Platform:   %s\n", WARP_PLATFORM);
+                printf("  Platform:   %s\n", entry.platform[0] ? entry.platform : warp_platform());
                 printf("  Size:       %.1f KB\n", (double)entry.size / 1024.0);
                 printf("  SHA256:     %.16s...\n", entry.sha256);
                 printf("  URL:        %s\n\n", entry.url);

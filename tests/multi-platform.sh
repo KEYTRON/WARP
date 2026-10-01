@@ -45,6 +45,13 @@ mk tool aarch64 linux-aarch64
 mk tool android_aarch64 android-aarch64
 mk x86only x86_64 linux-x86_64
 mk docs noarch any
+mk libcs x86_64 glibc-build            # one package built for glibc, musl and fully static
+mk libcs x86_64_musl musl-build
+mk libcs x86_64_static static-build
+mk staticonly x86_64_static static-build
+mk glibconly x86_64 glibc-build
+mk muslstatic x86_64_musl musl-build
+mk muslstatic x86_64_static static-build
 
 cat > "$T/repo/descriptions.json" <<'JSON'
 {"tool": {"ru": "Инструмент для проверки", "de": "Werkzeug zum Testen"}}
@@ -142,5 +149,24 @@ e = json.load(open(sys.argv[1]))["packages"]["x86only"]
 assert "builds" not in e and e["sha256"] and e["url"]
 PY
 ok "x86_64-only index stays in the old format"
+
+# 8. the C library: each machine takes its own libc build first, then a static one; musl never takes glibc
+pick() { # pick <libc> <package>: install on the x86_64 client pretending to run on <libc>; prints the marker or "refused"
+    "$WX" remove "$2" >/dev/null 2>&1 || true
+    if WARP_LIBC="$1" "$WX" install "$2" >/dev/null 2>&1; then marker lx "$2"; else echo refused; fi
+}
+[ "$(WARP_LIBC=glibc "$WX" platform)" = "linux-x86_64" ]      || fail "glibc platform"
+[ "$(WARP_LIBC=musl "$WX" platform)" = "linux-x86_64-musl" ]  || fail "musl platform"
+[ "$(WARP_LIBC=musl "$WX" platform --all | tr '\n' ' ')" = "linux-x86_64-musl linux-x86_64-static " ] || fail "musl candidates"
+[ "$(WARP_LIBC=glibc "$WX" platform --all | tr '\n' ' ')" = "linux-x86_64 linux-x86_64-static " ]     || fail "glibc candidates"
+[ "$(pick glibc libcs)" = "glibc-build" ]       || fail "glibc machine did not take the glibc build"
+[ "$(pick musl libcs)" = "musl-build" ]         || fail "musl machine did not take the musl build"
+[ "$(pick glibc staticonly)" = "static-build" ] || fail "glibc machine did not fall back to static"
+[ "$(pick musl staticonly)" = "static-build" ]  || fail "musl machine did not fall back to static"
+[ "$(pick glibc muslstatic)" = "static-build" ] || fail "glibc machine took the musl build"
+[ "$(pick musl muslstatic)" = "musl-build" ]    || fail "musl machine did not take its build"
+[ "$(pick musl glibconly)" = "refused" ]        || fail "musl machine took a glibc-only package"
+[ "$(pick glibc glibconly)" = "glibc-build" ]   || fail "glibc-only package must install on glibc"
+ok "libc: own build first, static as the fallback, a musl machine never takes a glibc build"
 
 echo "PASS: multi-platform"

@@ -202,8 +202,18 @@ static void parse_entry(json_t *pkg, const warp_repo_t *r, warp_pkg_entry_t *e) 
 
     json_t *builds = json_get(pkg, "builds");
     if (builds && builds->type == JSON_OBJECT) {
-        json_t *mine = json_get(builds, WARP_PLATFORM);
-        if (!mine || mine->type != JSON_OBJECT) mine = json_get(builds, "any");
+        json_t *mine = NULL;
+        const char *cand[4];
+        int nc = warp_platform_candidates(cand, 4);
+        for (int c = 0; c < nc && !mine; c++) {
+            mine = json_get(builds, cand[c]);
+            if (mine && mine->type != JSON_OBJECT) mine = NULL;
+            else if (mine) snprintf(e->platform, sizeof(e->platform), "%s", cand[c]);
+        }
+        if (!mine) {
+            mine = json_get(builds, "any");
+            if (mine) snprintf(e->platform, sizeof(e->platform), "any");
+        }
         if (mine && mine->type == JSON_OBJECT) {
             parse_build(mine, pkg, e);
             return;
@@ -214,7 +224,8 @@ static void parse_entry(json_t *pkg, const warp_repo_t *r, warp_pkg_entry_t *e) 
             size_t used = strlen(e->available);
             snprintf(e->available + used, sizeof(e->available) - used, "%s%s", used ? ", " : "", b->key);
         }
-    } else if (strcmp(WARP_PLATFORM, "linux-x86_64") == 0) {
+    } else if (strcmp(warp_platform(), "linux-x86_64") == 0) {
+        snprintf(e->platform, sizeof(e->platform), "linux-x86_64");
         parse_build(pkg, pkg, e);          /* legacy index: the entry is the x86_64 build */
         return;
     } else {

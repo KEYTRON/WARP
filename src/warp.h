@@ -40,6 +40,11 @@ extern const char *g_warp_mirrors[WARP_INDEX_MIRRORS];
 #endif
 #define WARP_PLATFORM    WARP_OS "-" WARP_ARCH
 const char *warp_archive_tag(void);
+/* The machine's C library ("glibc", "musl", "bionic", "" on macOS) and the platforms whose
+ * builds it can run, best first. warp_platform() is the first of them. */
+const char *warp_libc(void);
+int         warp_platform_candidates(const char **out, int max);
+const char *warp_platform(void);
 const char *warp_ui_lang(void);        /* "ru", "de", ... from WARP_LANG/LANGUAGE/LC_ALL/LC_MESSAGES/LANG; "en" by default */   /* archive name part: "x86_64" on Linux, "android_aarch64" elsewhere */
 
 /* ── P2P / seeding ───────────────────────────────────────────── */
@@ -141,6 +146,7 @@ typedef struct {
     int    delta_count;
     warp_dep_ref_t   deps[WARP_MAX_ENTRY_DEPS];
     int    dep_count;
+    char   platform[48];        /* the build chosen for this machine (e.g. linux-x86_64-static) */
     int    no_build;            /* 1 = the index has no build for this platform */
     int    versioned;           /* 1 = listed as name@version (an older release), not the latest */
     char   available[160];      /* platforms that do have one (for the message) */

@@ -124,7 +124,13 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (strcmp(argv[1], "platform") == 0) {         /* for build scripts and bug reports */
-        printf("%s\n", WARP_PLATFORM);
+        if (argc > 2 && strcmp(argv[2], "--all") == 0) {    /* every platform whose builds this machine takes */
+            const char *c[4];
+            int n = warp_platform_candidates(c, 4);
+            for (int i = 0; i < n; i++) printf("%s\n", c[i]);
+            return 0;
+        }
+        printf("%s\n", warp_platform());
         return 0;
     }
     if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0) {

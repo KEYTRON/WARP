@@ -65,9 +65,9 @@ int cmd_versions(int argc, char **argv) {
             const warp_pkg_entry_t *e = &idx.entries[i];
             if (strcmp(e->name, name) != 0) continue;
             any = 1;
-            printf("    %-14s [%s]%s%s\n", e->version, e->repo,
-                   e->versioned ? "" : "  latest",
-                   e->no_build ? "  (no build for " WARP_PLATFORM ")" : "");
+            printf("    %-14s [%s]%s", e->version, e->repo, e->versioned ? "" : "  latest");
+            if (e->no_build) printf("  (no build for %s)", warp_platform());
+            printf("\n");
         }
         if (!any) printf("    not in the index\n");
         index_free(&idx);
