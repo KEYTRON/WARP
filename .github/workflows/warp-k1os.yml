@@ -16,26 +16,14 @@ on:
 permissions:
   contents: read
 
-# All distro workflows share one group, so exactly one distro builds at a time
-# and only its two jobs (x86_64 and arm) run in parallel. The lab PC has ~2.8 GB
-# free and the OrbStack VM 3.9 GB, and twenty parallel distro builds would
-# swap both to a halt.
-concurrency:
-  group: warp-distro-builds
-  cancel-in-progress: false
-
 jobs:
-  test:
-    strategy:
-      max-parallel: 2
-      matrix:
-        include:
-          - runner: k1lab-k1os-x86_64
-          - runner: k1arm-k1os
-    runs-on: ${{ matrix.runner }}
+  build:
+    runs-on: [self-hosted, k1lab, warp]
     steps:
-      - name: Pull K1OS image
-        run: docker pull ghcr.io/keytron/k1os:latest
-
-      - name: Smoke test WARP in K1OS
-        run: docker run --rm ghcr.io/keytron/k1os:latest /bin/sh -lc 'warp --version && warp --help >/dev/null'
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -f docker/Dockerfile.k1os -t warp:k1os .
+      - name: Smoke test
+        run: |
+          docker run --rm warp:k1os --version
+          docker run --rm warp:k1os --help

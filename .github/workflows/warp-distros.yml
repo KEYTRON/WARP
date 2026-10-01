@@ -1,0 +1,43 @@
+name: WARP distros
+
+# Every distro on both architectures. One workflow with a matrix, because GitHub
+# keeps only one pending job per concurrency group: ten separate workflows
+# sharing a group would cancel eight of them the moment a push arrived.
+#
+# max-parallel: 2 — the lab PC has about 2.8 GB free and the OrbStack VM 3.9 GB.
+# Twenty distro builds at once would swap both machines to a halt, so the matrix
+# runs two at a time. Each job has its own runner: k1lab-<distro>-x86_64 on the
+# Gentoo lab PC, k1arm-<distro> in the OrbStack machine on the MacBook.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.distro }} ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        distro: [almalinux, alpine, arch, artix, devuan, fedora, ubuntu, void, void-musl, k1os]
+        arch: [x86_64, arm]
+    runs-on: ${{ matrix.arch == 'arm' && format('k1arm-{0}', matrix.distro) || format('k1lab-{0}-x86_64', matrix.distro) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report the runner
+        run: |
+          uname -m
+          echo "distro: ${{ matrix.distro }}, arch: ${{ matrix.arch }}"
+      - name: Build image
+        run: docker build -f docker/Dockerfile.${{ matrix.distro }} -t warp:${{ matrix.distro }} .
+      - name: Smoke test
+        run: |
+          docker run --rm warp:${{ matrix.distro }} --version
+          docker run --rm warp:${{ matrix.distro }} --help
+      - name: The binary is really for this architecture
+        run: |
+          docker run --rm --entrypoint sh warp:${{ matrix.distro }} -c 'uname -m'
