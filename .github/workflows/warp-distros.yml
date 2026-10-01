@@ -25,7 +25,10 @@ jobs:
       matrix:
         distro: [almalinux, alpine, arch, artix, devuan, fedora, ubuntu, void, void-musl, k1os]
         arch: [x86_64, arm]
-    runs-on: ${{ matrix.arch == 'arm' && format('k1arm-{0}', matrix.distro) || format('k1lab-{0}-x86_64', matrix.distro) }}
+    # runs-on matches labels, not runner names. The x86_64 runners carry
+    # k1lab + the distro label, the arm ones carry aarch64 + the same label, so
+    # the distro label alone sends each job to its own pair of runners.
+    runs-on: [self-hosted, ${{ matrix.arch == 'arm' && 'aarch64' || 'k1lab' }}, ${{ matrix.distro }}]
     steps:
       - uses: actions/checkout@v4
       - name: Report the runner
