@@ -18,7 +18,11 @@ jobs:
           sw_vers
           uname -m
       - name: Build
-        run: make -j"$(sysctl -n hw.ncpu)"
+        # The runner works in a checkout of its own, but object files from a
+        # Linux build must never be linked on macOS: clang cannot read them.
+        run: |
+          make clean
+          make -j"$(sysctl -n hw.ncpu)"
       - name: Platform is macOS on arm64
         run: ./warp --version
       - name: Crypto vectors

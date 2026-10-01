@@ -18,7 +18,11 @@ jobs:
           uname -m
           cat /etc/os-release | head -2
       - name: Build
-        run: make -j"$(nproc)"
+        # This machine also holds the macOS build of the same checkout; object
+        # files are not portable, so wipe whatever is left before compiling.
+        run: |
+          make clean
+          make -j"$(nproc)"
       - name: Platform is linux on aarch64
         run: ./warp --version
       - name: Crypto vectors
