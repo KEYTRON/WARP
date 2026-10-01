@@ -41,12 +41,14 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "$TERMUX_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
+          # The phone's host key changes if Termux is reinstalled, so accept it
+          # on first contact instead of pinning a key that would go stale.
           printf '%s\n' "$TERMUX_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: Report the phone
         run: |
-          ssh -i ~/.ssh/id_ed25519 -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
             'uname -m; getprop ro.product.model; getprop ro.build.version.release; nproc'
 
       - name: Send the sources
@@ -56,7 +58,7 @@ jobs:
 
       - name: Build natively in Termux
         run: |
-          ssh -i ~/.ssh/id_ed25519 -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" "
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" "
             set -e
             rm -rf \$HOME/warp && mkdir -p \$HOME/warp
             tar xzf /data/data/com.termux/files/usr/tmp/warp-src.tgz -C \$HOME/warp
@@ -68,28 +70,28 @@ jobs:
 
       - name: The platform is android on aarch64
         run: |
-          ssh -i ~/.ssh/id_ed25519 -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
             "./warp stats --what | grep -o '\"os\":\"[^\"]*\",\"arch\":\"[^\"]*\"' | head -1"
 
       - name: Crypto vectors
         run: |
-          ssh -i ~/.ssh/id_ed25519 -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
             'cd ~/warp && sh tests/crypto.sh'
 
       - name: Multi-platform
         if: inputs.full
         run: |
-          ssh -i ~/.ssh/id_ed25519 -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
             'cd ~/warp && sh tests/multi-platform.sh'
 
       - name: Node report
         if: inputs.full
         run: |
-          ssh -i ~/.ssh/id_ed25519 -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
             'cd ~/warp && sh tests/node-stats.sh'
 
       - name: Clean up the checkout on the phone
         if: always()
         run: |
-          ssh -i ~/.ssh/id_ed25519 -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
             'rm -rf ~/warp /data/data/com.termux/files/usr/tmp/warp-src.tgz' || true
