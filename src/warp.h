@@ -7,8 +7,34 @@
 
 /* ── version & paths ─────────────────────────────────────────── */
 #define WARP_VERSION     "0.4.5"
+/* Where things live. Linux: /var/lib/warp and /usr/local/bin (root). macOS: a prefix owned by the
+ * user, /opt/warp (like Homebrew's), so nothing is installed by root afterwards and `warp shellenv`
+ * puts /opt/warp/bin on the PATH. Termux: under $PREFIX, there is no root and no /tmp there. */
+#if defined(__ANDROID__)
+#define WARP_PREFIX      "/data/data/com.termux/files/usr"
+#ifndef WARP_STORE_DIR
+#define WARP_STORE_DIR   WARP_PREFIX "/var/lib/warp"
+#endif
+#ifndef WARP_BIN_DIR
+#define WARP_BIN_DIR     WARP_PREFIX "/bin"
+#endif
+#define WARP_TMP_DIR     WARP_PREFIX "/tmp"
+#elif defined(__APPLE__)
+#ifndef WARP_STORE_DIR
+#define WARP_STORE_DIR   "/opt/warp"
+#endif
+#ifndef WARP_BIN_DIR
+#define WARP_BIN_DIR     WARP_STORE_DIR "/bin"
+#endif
+#define WARP_TMP_DIR     "/tmp"
+#else
 #ifndef WARP_STORE_DIR
 #define WARP_STORE_DIR   "/var/lib/warp"
+#endif
+#ifndef WARP_BIN_DIR
+#define WARP_BIN_DIR     "/usr/local/bin"
+#endif
+#define WARP_TMP_DIR     "/tmp"
 #endif
 #define WARP_INDEX_MIRRORS 3
 extern const char *g_warp_mirrors[WARP_INDEX_MIRRORS];

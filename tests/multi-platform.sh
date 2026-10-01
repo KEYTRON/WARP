@@ -167,6 +167,12 @@ pick() { # pick <libc> <package>: install on the x86_64 client pretending to run
 [ "$(pick musl muslstatic)" = "musl-build" ]    || fail "musl machine did not take its build"
 [ "$(pick musl glibconly)" = "refused" ]        || fail "musl machine took a glibc-only package"
 [ "$(pick glibc glibconly)" = "glibc-build" ]   || fail "glibc-only package must install on glibc"
+python3 - "$T/repo/index.json" <<'PY' || fail "static-only package in the index"
+import json, sys
+e = json.load(open(sys.argv[1]))["packages"]["staticonly"]
+assert list(e["builds"]) == ["linux-x86_64-static"], e["builds"]
+assert e["url"].endswith("staticonly-1.0-x86_64_static.warp"), "older clients must still find a build at the top level"
+PY
 ok "libc: own build first, static as the fallback, a musl machine never takes a glibc build"
 
 echo "PASS: multi-platform"

@@ -152,7 +152,8 @@ def main() -> int:
         for only_version, chosen in selections:
             builds = {plat: build_of(name, ver, arch, tag, older)
                       for plat, ((ver, arch, tag), older) in sorted(chosen.items())}
-            legacy = builds.get(LEGACY)
+            # older clients read the top level as the glibc x86_64 build; a fully static one runs there too
+            legacy = builds.get(LEGACY) or builds.get(LEGACY + "-static")
             first = legacy or next(iter(builds.values()))
             entry = {
                 "version": first["version"],
@@ -165,7 +166,7 @@ def main() -> int:
             tr = {lang: text for lang, text in tr.items() if lang != "en" and text}
             if tr and only_version is None:
                 entry["descriptions"] = tr
-            if legacy:      # the top level stays the linux-x86_64 build for older clients
+            if legacy:      # the top level stays the linux-x86_64 (or static) build for older clients
                 entry.update({k: legacy[k] for k in ("sha256", "size", "url", "deltas") if k in legacy})
             if set(builds) != {LEGACY}:
                 entry["builds"] = builds

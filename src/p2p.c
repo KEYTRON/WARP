@@ -83,7 +83,7 @@ int seed_config_load(warp_seed_config_t *cfg) {
     json_free(j);
 
     if (cfg->cheap_sd) {
-        strncpy(g_volunteer_dir, "/tmp/warp-volunteer", sizeof(g_volunteer_dir) - 1);
+        strncpy(g_volunteer_dir, WARP_TMP_DIR "/warp-volunteer", sizeof(g_volunteer_dir) - 1);
     } else {
         strncpy(g_volunteer_dir, WARP_STORE_DIR "/volunteer", sizeof(g_volunteer_dir) - 1);
     }

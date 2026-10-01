@@ -62,6 +62,7 @@ static void print_help(void) {
         "      --monthly <N>        Monthly upload cap (e.g. 50G)\n"
         "      --status             Show this node's state\n"
         "      --no-start           Only save the settings, don't run the node\n"
+        "    shellenv               Print the line that puts warp's programs on the PATH (eval \"$(warp shellenv)\")\n"
         "    stats                  This node and the network: sent, packages, nodes, traffic\n"
         "      --what               Show exactly what anonymous statistics contain\n"
         "      --consent|--no-stats Agree to / stop sending anonymous statistics (default: off)\n"
@@ -72,7 +73,7 @@ static void print_help(void) {
         "    warp upgrade\n"
         "    warp repo add lab https://mirror.example/lab --pubkey <hex>\n\n"
         "  Repositories: " WARP_REPOS_CONF " (default: k1os via GitHub, GitLab, GitVerse)\n"
-        "  Store: " WARP_STORE_DIR "\n\n"
+        "  Store: " WARP_STORE_DIR "   Programs: " WARP_BIN_DIR "\n\n"
     );
     stats_print_help_line();
 }
@@ -121,6 +122,12 @@ int main(int argc, char **argv) {
 
     if (strcmp(argv[1], "archive-tag") == 0) {      /* for build scripts */
         printf("%s\n", warp_archive_tag());
+        return 0;
+    }
+    if (strcmp(argv[1], "shellenv") == 0) {         /* eval "$(warp shellenv)" in the shell profile */
+        const char *sh = argc > 2 ? argv[2] : getenv("SHELL");
+        if (sh && strstr(sh, "fish")) printf("fish_add_path %s\n", WARP_BIN_DIR);
+        else printf("export PATH=\"%s:$PATH\"\n", WARP_BIN_DIR);
         return 0;
     }
     if (strcmp(argv[1], "platform") == 0) {         /* for build scripts and bug reports */

@@ -92,8 +92,7 @@ int warp_platform_candidates(const char **out, int max) {
         ADD("%s-%s", os, WARP_ARCH);
         ADD("%s-%s-static", os, WARP_ARCH);
     } else if (strcmp(libc, "bionic") == 0) {
-        ADD("%s-%s", os, WARP_ARCH);
-        ADD("linux-%s-static", WARP_ARCH);          /* a static Linux binary runs on Android's kernel */
+        ADD("%s-%s", os, WARP_ARCH);                /* no static fallback: a static Go binary has no DNS on Android */
     } else {
         ADD("%s-%s", os, WARP_ARCH);                /* macOS */
     }

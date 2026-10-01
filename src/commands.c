@@ -97,7 +97,7 @@ static int fetch_via_delta(const warp_pkg_entry_t *entry, const warp_repo_t *rep
  * and activate it. */
 static int install_archive(const warp_pkg_entry_t *entry, const char *tmp_path) {
     char manifest_tmp[600];
-    snprintf(manifest_tmp, sizeof(manifest_tmp), "/tmp/warp-%s-manifest.json", entry->name);
+    snprintf(manifest_tmp, sizeof(manifest_tmp), WARP_TMP_DIR "/warp-%s-manifest.json", entry->name);
     char cmd[1400];
     snprintf(cmd, sizeof(cmd), "tar -xzf %s -O manifest.json > %s 2>/dev/null",
              tmp_path, manifest_tmp);
@@ -232,7 +232,7 @@ static int install_entry(const warp_index_t *idx, const warp_pkg_entry_t *entry,
     print_entry_header(entry);
 
     char tmp_path[512];
-    snprintf(tmp_path, sizeof(tmp_path), "/tmp/warp-%s.warp", entry->name);
+    snprintf(tmp_path, sizeof(tmp_path), WARP_TMP_DIR "/warp-%s.warp", entry->name);
 
     int rc = WARP_ERR_NOENT;
     if (installed && entry->delta_count > 0)

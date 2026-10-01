@@ -74,12 +74,16 @@ int store_init(void) {
         WARP_STORE_DIR "/prev",
         WARP_STORE_DIR "/history",
         WARP_STORE_DIR "/pins",
-        "/usr/local/bin",
+        WARP_BIN_DIR,
         NULL
     };
     for (int i = 0; dirs[i]; i++) {
         if (mkdirs(dirs[i], 0755) != WARP_OK && !path_exists(dirs[i])) {
             warp_err("Cannot create %s: %s", dirs[i], strerror(errno));
+#if defined(__APPLE__)
+            if (errno == EACCES || errno == EPERM)
+                warp_err("Make the prefix yours once:  sudo mkdir -p %s && sudo chown \"$USER\" %s", WARP_STORE_DIR, WARP_STORE_DIR);
+#endif
             return WARP_ERR_IO;
         }
     }
@@ -263,7 +267,7 @@ static int activate_impl(const char *name, const char *hash12, int push) {
         hist_push(name, hash12);
     }
 
-    /* Expose binaries in /usr/local/bin */
+    /* Expose binaries in WARP_BIN_DIR */
     char manifest_path[768];
     snprintf(manifest_path, sizeof(manifest_path), "%s/manifest.json", store_pkg);
     if (path_exists(manifest_path)) {
@@ -286,7 +290,7 @@ static int activate_impl(const char *name, const char *hash12, int push) {
 
                         char bin_src[768], bin_dst[512];
                         snprintf(bin_src, sizeof(bin_src), "%s/files/%s", store_pkg, bin);
-                        snprintf(bin_dst, sizeof(bin_dst), "/usr/local/bin/%s", bname);
+                        snprintf(bin_dst, sizeof(bin_dst), WARP_BIN_DIR "/%s", bname);
 
                         unlink(bin_dst);
                         if (symlink(bin_src, bin_dst) == 0) {
@@ -316,18 +320,18 @@ int store_remove(const char *name) {
         return WARP_ERR_NOENT;
     }
 
-    /* Remove /usr/local/bin symlinks pointing into this package */
+    /* Remove WARP_BIN_DIR symlinks pointing into this package */
     char store_pkg[512] = {0};
     ssize_t n = readlink(active_link, store_pkg, sizeof(store_pkg)-1);
     if (n > 0) {
         store_pkg[n] = '\0';
-        DIR *d = opendir("/usr/local/bin");
+        DIR *d = opendir(WARP_BIN_DIR);
         if (d) {
             struct dirent *ent;
             while ((ent = readdir(d)) != NULL) {
                 if (ent->d_name[0] == '.') continue;
                 char lpath[512], target[512] = {0};
-                snprintf(lpath, sizeof(lpath), "/usr/local/bin/%s", ent->d_name);
+                snprintf(lpath, sizeof(lpath), WARP_BIN_DIR "/%s", ent->d_name);
                 ssize_t m = readlink(lpath, target, sizeof(target)-1);
                 if (m > 0) {
                     target[m] = '\0';
