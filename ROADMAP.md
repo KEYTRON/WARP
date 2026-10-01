@@ -51,7 +51,7 @@ All packages are built for x86_64 today, and the architecture exists only in the
 - [ ] Packages and CI for aarch64 (WARP itself builds and passes its tests on linux/aarch64 in an OrbStack machine on the MacBook; `allan` is published for it; a runner and more packages are still to do)
 - [ ] riscv64 — once there is real hardware to test on
 - [ ] The C library in the platform. glibc, musl (Alpine, Void musl) and bionic (Android) are different ABIs, and Void Linux ships both glibc and musl: today `linux-x86_64` means glibc, so a musl machine would take a build that cannot even start (checked: the dynamic build on Void musl answers "not found"). Decision: the platform learns the C library, detected at run time (the interpreter of `/bin/sh`), not at build time. Builds: `linux-x86_64` (glibc, as before), `linux-x86_64-musl`, and `linux-x86_64-static` for a fully static build that runs on every Linux. The client takes its exact libc first and the static build second; a musl machine never takes a glibc build. Fully static packages (Go, Rust, upstream static builds such as ripgrep, jq, btop) are published once as `static`. WARP itself ships as a static binary (`tools/build-static.sh`: works on Gentoo glibc and Void musl alike). The survey and the site switchers learn the libc too
-- [ ] CI runners for the other platforms (each becomes its own workflow, so the CI block on the site shows it): native macOS (on the MacBook), linux/aarch64 (the OrbStack machine on the MacBook is ready), Termux (none yet; to be started by hand when the phone is at home and charging, so it does not drain the battery away from home)
+- [x] CI runners for the other platforms: native macOS (`macos-arm64`), linux/aarch64 (ten `k1arm-<distro>` runners in the OrbStack machine on the MacBook), and the phone. Every distro now builds on x86_64 and arm through one matrix workflow (`.github/workflows/warp-distros.yml`); the ten per-distro workflows stay as `workflow_dispatch` for debugging one distro alone
 
 ## Versions side by side (idea from the user, 2026-10-01)
 Today several versions already sit in the store (`store/<name>-<hash12>`), but only one `prev` link exists: rollback toggles between two.
@@ -71,7 +71,7 @@ Checked on Apple Silicon without Homebrew: WARP builds with the Command Line Too
 - [ ] System facts for the survey on macOS (`sysctl`: OS version, CPU, cores, memory)
 - [ ] The first packages built for `macos-aarch64` (ripgrep, jq, btop from the upstream releases) and published with a `builds` entry
 - [ ] Portable tests (no GNU-only `tar -I`, `timeout`, `stat -c`)
-- [ ] Two CI runners on the MacBook: a native macOS runner and the linux/aarch64 one (the OrbStack machine, already prepared)
+- [x] Two CI runners on the MacBook: the native macOS one builds with `make` on Apple Silicon and runs the crypto vectors, the linux/aarch64 one lives in the OrbStack machine and builds the distro images. Docker for the arm builds is installed inside that machine; OrbStack on the MacBook itself is the engine for the native runner
 - [ ] Longer term: replace Homebrew on this machine with WARP (the repository becomes the base repository)
 
 ## Termux (Android)
@@ -79,7 +79,7 @@ WARP was started there by accident (0.4.1 built from source and ran); SSH access
 - [ ] Prefix-aware paths: store, binaries and temporary files under `$PREFIX` (no `/var/lib`, no `/usr/local/bin`, no root); the CA bundle at `$PREFIX/etc/tls/cert.pem` (found since 0.4.5)
 - [ ] Installer for Termux (`pkg`-free, prebuilt `android-aarch64` binary)
 - [ ] The first `android-aarch64` packages (static Go and Rust binaries)
-- [ ] A CI runner on the phone that is started by hand when it is at home and charging, so it does not drain the battery away from home
+- [x] CI on the phone, started by hand when it is at home and charging, so it does not drain the battery away from home. There is deliberately **no runner on the phone**: the Actions runner is a .NET program and does not run on Android's Bionic libc. The `warp-termux.yml` workflow runs on the lab PC (already on the tailnet) and drives the phone over SSH on port 8022; the build itself is native, `make` with clang, no proot and no glibc
 
 ## Documentation in German
 - [x] `README.de.md`, `ROADMAP.de.md` and `docs/NODES.de.md` next to the English and Russian ones
@@ -103,5 +103,5 @@ WARP was started there by accident (0.4.1 built from source and ran); SSH access
 - [ ] Working K1OS index mirrors on GitLab and GitVerse
 - [ ] zstd compression
 - [ ] Declarative system description (`system.yaml`)
-- [ ] Building and running in Termux
+- [x] Building and running in Termux: `warp 0.4.5` builds with clang and reports `os: android`, `arch: aarch64`; `tests/crypto.sh` passes there
 - [ ] Delivering K1K services to `/SVC` as WARP packages
