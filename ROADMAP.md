@@ -1,6 +1,6 @@
 # WARP roadmap
 
-Stage: 0.4.6
+Stage: 0.4.7
 
 Stages go in order: `[x]` is done, `[ ]` is planned. The current stage is the first unfinished one.
 
@@ -72,6 +72,7 @@ Checked on Apple Silicon without Homebrew: WARP builds with the Command Line Too
 - [x] The first packages built for `macos-aarch64` (ripgrep and jq from the upstream releases; btop publishes no macOS build) and published with a `builds` entry — done
 - [x] Portable tests (no GNU-only `tar -I`, `timeout`, `stat -c`): they pass on native macOS and the macOS job runs them (the Docker-based end-to-end test stays on Linux)
 - [x] Two CI runners on the MacBook: the native macOS one builds with `make` on Apple Silicon and runs the crypto vectors, the linux/aarch64 one lives in the OrbStack machine and builds the distro images. Docker for the arm builds is installed inside that machine; OrbStack on the MacBook itself is the engine for the native runner
+- [x] The node starts at login through a per-user launchd agent (`init/install-service.sh`, no root); `--port` is remembered in `seed.conf` (OrbStack holds 7777 on this Mac); a running node is found without `/proc`
 - [ ] Longer term: replace Homebrew on this machine with WARP (the repository becomes the base repository)
 
 ## Termux (Android)

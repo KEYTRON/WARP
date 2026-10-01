@@ -209,4 +209,11 @@ grep -q "^/warp/stats" "$T/tracker.log" || fail "no report after the user accept
 kill -TERM $NODE; wait $NODE 2>/dev/null || true
 ok "an older consent pauses the report until the user has seen the new fields"
 
+# 9. --port is saved with the config, so the node and the announce after an install use the same one
+python3 - "$T/store/seed.conf" "$NP" <<'PY' || fail "port is not saved in seed.conf"
+import json, sys
+assert json.load(open(sys.argv[1])).get("port") == int(sys.argv[2]), open(sys.argv[1]).read()
+PY
+ok "--port is remembered in seed.conf"
+
 echo "PASS: node-stats"

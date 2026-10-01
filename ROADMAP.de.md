@@ -1,6 +1,6 @@
 # WARP-Roadmap
 
-Stand: 0.4.6
+Stand: 0.4.7
 
 Auch auf [English](ROADMAP.md) und [Русский](ROADMAP.ru.md).
 
@@ -74,6 +74,7 @@ Auf Apple Silicon ohne Homebrew geprüft: WARP baut allein mit den Command Line 
 - [x] Die ersten für `macos-aarch64` gebauten Pakete (ripgrep und jq aus den offiziellen Releases; btop veröffentlicht keinen macOS-Build), veröffentlicht mit einem `builds`-Eintrag — erledigt
 - [x] Portable Tests (kein GNU-spezifisches `tar -I`, `timeout`, `stat -c`): Sie laufen unter nativem macOS, und der macOS-Job führt sie aus (der Docker-Ende-zu-Ende-Test bleibt unter Linux)
 - [ ] Zwei CI-Runner auf dem MacBook: ein nativer macOS-Runner und der linux/aarch64-Runner (die OrbStack-Maschine, schon vorbereitet)
+- [x] Der Knoten startet beim Anmelden über einen launchd-Agenten des Benutzers (`init/install-service.sh`, ohne Root); `--port` wird in `seed.conf` gemerkt (OrbStack hält 7777 auf diesem Mac); ein laufender Knoten wird ohne `/proc` gefunden
 - [ ] Langfristig: Homebrew auf diesem Rechner durch WARP ersetzen (das Repository wird zum Basis-Repository)
 
 ## Termux (Android)

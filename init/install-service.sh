@@ -11,6 +11,33 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 ok()  { echo "  ✓ $*"; }
 info(){ echo "  → $*"; }
 
+# ── macOS: a per-user launchd agent, no root; the node reads its port from the config ──
+if [ "$(uname -s)" = Darwin ]; then
+    WARP_BIN=/opt/warp/bin/warp
+    [ -x "$WARP_BIN" ] || die "warp not found at $WARP_BIN. Run the installer first."
+    if [ "$ARG" = "volunteer" ]; then "$WARP_BIN" volunteer --setup --no-start; fi
+    LABEL=dev.keytron.warp-seed
+    PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+    mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
+    cat > "$PLIST" <<PL
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>$LABEL</string>
+  <key>ProgramArguments</key><array><string>$WARP_BIN</string><string>seed</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$HOME/Library/Logs/warp-seed.log</string>
+  <key>StandardErrorPath</key><string>$HOME/Library/Logs/warp-seed.log</string>
+</dict></plist>
+PL
+    launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+    launchctl bootstrap "gui/$(id -u)" "$PLIST"
+    ok "warp-seed started at login (launchd agent $PLIST)"
+    info "Log: ~/Library/Logs/warp-seed.log; stop: launchctl bootout gui/$(id -u)/$LABEL"
+    exit 0
+fi
+
 [ -x "$WARP_BIN" ] || die "warp not found at $WARP_BIN. Run 'make install' first."
 [ "$ARG" = "seed" ] || [ "$ARG" = "volunteer" ] || \
     die "Usage: $0 [seed|volunteer]"

@@ -72,6 +72,7 @@ int seed_config_load(warp_seed_config_t *cfg) {
     cfg->monthly_limit_bytes = (size_t)json_num(j, "monthly_limit_bytes", 0);
     cfg->monthly_used_bytes  = (size_t)json_num(j, "monthly_used_bytes",  0);
     cfg->cheap_sd            = (int)   json_num(j, "cheap_sd",             0);
+    cfg->port                = (int)   json_num(j, "port",                 0);
     cfg->volunteer           = (int)   json_num(j, "volunteer",            0);
     cfg->unlimited           = (int)   json_num(j, "unlimited",            0);
     cfg->max_packages        = (size_t)json_num(j, "max_packages",         0);
@@ -115,6 +116,7 @@ int seed_config_save(const warp_seed_config_t *cfg) {
         "  \"monthly_limit_bytes\": %zu,\n"
         "  \"monthly_used_bytes\": %zu,\n"
         "  \"cheap_sd\": %d,\n"
+        "  \"port\": %d,\n"
         "  \"month_tag\": \"%s\",\n"
         "  \"volunteer\": %d,\n"
         "  \"unlimited\": %d,\n"
@@ -129,7 +131,7 @@ int seed_config_save(const warp_seed_config_t *cfg) {
         "}\n",
         cfg->quota_bytes, cfg->serve,
         cfg->monthly_limit_bytes, cfg->monthly_used_bytes,
-        cfg->cheap_sd, cfg->month_tag,
+        cfg->cheap_sd, cfg->port, cfg->month_tag,
         cfg->volunteer, cfg->unlimited, cfg->max_packages, cfg->reserve_bytes,
         cfg->uploaded_total, cfg->served_total,
         cfg->stats_consent, cfg->consent_asked, cfg->consent_schema, cfg->node_id);
@@ -1024,6 +1026,7 @@ static int node_serve(int port) {
 
     if (bind(srv, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         warp_err("bind: %s (port %d)", strerror(errno), port);
+        if (errno == EADDRINUSE) warp_err("Something else holds port %d; pick another with --port N (it is remembered)", port);
         close(srv);
         return WARP_ERR_NET;
     }

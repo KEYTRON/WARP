@@ -199,7 +199,7 @@ static void announce(const warp_pkg_entry_t *entry, const warp_repo_t *repo) {
     if (tail) *tail = '\0';
     tail = strstr(announce_url, "/peers");
     if (tail) *tail = '\0';
-    if (p2p_announce(announce_url, entry->name, entry->sha256, WARP_PEER_PORT, 0) == WARP_OK)
+    if (p2p_announce(announce_url, entry->name, entry->sha256, node_port(), 0) == WARP_OK)
         warp_info("Announced to tracker — now seeding %s", entry->name);
 }
 
@@ -767,6 +767,13 @@ static void poke_running_node(void) {
 }
 
 /* Run the node in the foreground; "already running" is not a failure. */
+/* The port this machine's node uses: the one saved with --port, else the default. */
+int node_port(void) {
+    warp_seed_config_t c;
+    seed_config_load(&c);
+    return c.port > 0 ? c.port : WARP_PEER_PORT;
+}
+
 static int run_node(warp_seed_config_t *cfg, int port) {
     int rc = p2p_node_run(cfg, port);
     return (rc == WARP_OK || rc == WARP_ERR_EXIST) ? 0 : 1;
@@ -774,7 +781,7 @@ static int run_node(warp_seed_config_t *cfg, int port) {
 
 /* ── warp seed [--port N] ────────────────────────────────────── */
 int cmd_seed(int argc, char **argv) {
-    int port = WARP_PEER_PORT;
+    int port = 0;
     for (int i = 0; i < argc; i++) {
         if (strcmp(argv[i], "--port") == 0 && i + 1 < argc)
             port = atoi(argv[++i]);
@@ -782,6 +789,11 @@ int cmd_seed(int argc, char **argv) {
 
     warp_seed_config_t cfg;
     seed_config_load(&cfg);          /* defaults when there is no file yet */
+    if (port > 0 && port != cfg.port) {      /* --port is remembered, so installs announce the same one */
+        cfg.port = port;
+        if (access(WARP_SEED_CONF, F_OK) == 0) seed_config_save(&cfg);
+    }
+    if (port <= 0) port = cfg.port > 0 ? cfg.port : WARP_PEER_PORT;
 
     warp_installed_t *list;
     int count;
@@ -811,7 +823,7 @@ int cmd_volunteer(int argc, char **argv) {
     warp_seed_config_t cfg;
     int have_cfg = (seed_config_load(&cfg) == WARP_OK);
     int do_setup = !have_cfg;
-    int port     = WARP_PEER_PORT;
+    int port     = 0;
     int disable  = 0, status = 0, no_start = 0;
 
     for (int i = 0; i < argc; i++) {
@@ -896,10 +908,15 @@ int cmd_volunteer(int argc, char **argv) {
             cfg.max_packages = 0;
         }
 
+#if defined(__linux__) && !defined(__ANDROID__)
+        /* /tmp is RAM only on some Linux systems; on macOS and in Termux it is disk, so no question there. */
         printf("  Cheap SD-card mode? (volunteer cache in RAM /tmp, saves flash wear) [y/N]: ");
         fflush(stdout);
         if (!fgets(inp, sizeof(inp), stdin)) return 1;
         cfg.cheap_sd = (inp[0] == 'y' || inp[0] == 'Y');
+#else
+        cfg.cheap_sd = 0;
+#endif
 
         printf("  Serve files to peers? (slow internet: answer n) [Y/n]: ");
         fflush(stdout);
@@ -925,6 +942,8 @@ int cmd_volunteer(int argc, char **argv) {
 
     if (!cfg.consent_asked) stats_ask_consent(&cfg);
 
+    if (port > 0) cfg.port = port;
+    else port = cfg.port > 0 ? cfg.port : WARP_PEER_PORT;
     if (apply_config(&cfg) != 0) return 1;
     warp_ok("Config saved: %s", WARP_SEED_CONF);
 

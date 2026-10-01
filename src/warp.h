@@ -6,7 +6,7 @@
 #include <sys/types.h>
 
 /* ── version & paths ─────────────────────────────────────────── */
-#define WARP_VERSION     "0.4.6"
+#define WARP_VERSION     "0.4.7"
 /* Where things live. Linux: /var/lib/warp and /usr/local/bin (root). macOS: a prefix owned by the
  * user, /opt/warp (like Homebrew's), so nothing is installed by root afterwards and `warp shellenv`
  * puts /opt/warp/bin on the PATH. Termux: under $PREFIX, there is no root and no /tmp there. */
@@ -219,6 +219,7 @@ typedef struct {
     unsigned long long served_total;     /* packages sent over the whole life */
     int    stats_consent;        /* 1=user agreed to send anonymous counters */
     int    consent_asked;        /* 1=the question has been asked already   */
+    int    port;                 /* port the node listens on and announces; 0 = WARP_PEER_PORT */
     int    consent_schema;       /* which report the consent covers (see WARP_REPORT_SCHEMA) */
     char   node_id[33];          /* random anonymous node id (hex)          */
 } warp_seed_config_t;
@@ -353,6 +354,7 @@ int    p2p_download(const char *pkg_name, const char *sha256_expected,
 int    p2p_announce(const char *announce_url, const char *pkg_name,
                     const char *sha256, int port, int is_volunteer);
 int    p2p_node_run(warp_seed_config_t *cfg, int port);
+int    node_port(void);                 /* the saved --port, else WARP_PEER_PORT */
 int    p2p_node_signal(int sig);
 int    seed_config_load(warp_seed_config_t *cfg);
 int    seed_config_save(const warp_seed_config_t *cfg);
