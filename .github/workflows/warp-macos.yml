@@ -30,7 +30,10 @@ jobs:
       - name: Delta round trip
         run: sh tests/delta-roundtrip.sh
       - name: Versions side by side
-        run: sh tests/versions.sh
+        run: |
+          env | sort | grep -iE "proxy|curl|ssl|cert|lang|^lc_|^path=|^tmpdir|^home=" || true
+          sh -x tests/versions.sh 2>&1 | tail -60
+          exit ${PIPESTATUS[0]}
       - name: Platforms and libc
         run: sh tests/multi-platform.sh
       - name: Node and anonymous statistics
