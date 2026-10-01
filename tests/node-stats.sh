@@ -167,7 +167,8 @@ sleep 1
 grep "^/warp/stats" "$T/tracker.log" | head -1 | sed 's#^/warp/stats ##' | python3 -c '
 import json,sys
 d=json.load(sys.stdin)
-assert set(d)=={"node_id","version","os","arch","kernel","distro","distro_version","cpu","cores","ram_gb","volunteer","uploaded_bytes","served","packages"}, sorted(d)
+assert set(d)=={"node_id","version","os","arch","libc","kernel","distro","distro_version","cpu","cores","ram_gb","volunteer","uploaded_bytes","served","packages"}, sorted(d)
+assert d["libc"] in ("glibc","musl"), d["libc"]
 assert d["os"] == "linux" and d["arch"] in ("x86_64","aarch64"), (d["os"], d["arch"])
 import re
 assert re.fullmatch(r"\d+\.\d+", d["kernel"]), "kernel must be major.minor only: %r" % d["kernel"]

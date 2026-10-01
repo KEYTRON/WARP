@@ -199,7 +199,7 @@ typedef struct {
 
 /* The anonymous report grows now and then; a consent given for an older, smaller
  * one does not cover the new fields until the user has seen and accepted them. */
-#define WARP_REPORT_SCHEMA   2
+#define WARP_REPORT_SCHEMA   3
 #define WARP_RESERVE_DEFAULT ((size_t)1073741824)   /* keep 1 GiB free */
 #define WARP_NODE_PID        WARP_STORE_DIR "/node.pid"
 #define WARP_NET_STATS_CACHE WARP_STORE_DIR "/net-stats.json"

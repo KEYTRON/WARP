@@ -6,6 +6,10 @@
 #include <sys/stat.h>
 #include <ctype.h>
 #include <curl/curl.h>
+#include <stdint.h>
+#if defined(__APPLE__)
+#include <sys/sysctl.h>
+#endif
 #include "warp.h"
 
 /* ══════════════════════════════════════════════════════════════
@@ -178,6 +182,25 @@ static void sysinfo_collect(warp_sysinfo_t *si) {
     if (mem_kb > 0) si->ram_gb = ram_bucket((double)mem_kb / 1048576.0);
     long n = sysconf(_SC_NPROCESSORS_ONLN);
     si->cores = n > 0 ? (int)n : 0;
+#elif defined(__APPLE__)
+    char buf[128];
+    size_t len = sizeof(buf);
+    int maj = 0, min = 0;
+    if (sysctlbyname("kern.osrelease", buf, &len, NULL, 0) == 0 && sscanf(buf, "%d.%d", &maj, &min) == 2 && maj > 0)
+        snprintf(si->kernel, sizeof(si->kernel), "%d.%d", maj, min);       /* Darwin 25.4 */
+    snprintf(si->distro, sizeof(si->distro), "macos");
+    len = sizeof(buf);
+    if (sysctlbyname("kern.osproductversion", buf, &len, NULL, 0) == 0 && sscanf(buf, "%d.%d", &maj, &min) >= 1)
+        snprintf(si->distro_version, sizeof(si->distro_version), "%d", maj);  /* the major release, like 26 */
+    len = sizeof(buf);
+    if (sysctlbyname("machdep.cpu.brand_string", buf, &len, NULL, 0) == 0) snprintf(si->cpu, sizeof(si->cpu), "%s", buf);
+    clean_text(si->cpu);                     /* "Apple M1" is already tidy */
+    uint64_t mem = 0;
+    len = sizeof(mem);
+    if (sysctlbyname("hw.memsize", &mem, &len, NULL, 0) == 0 && mem > 0) si->ram_gb = ram_bucket((double)mem / 1073741824.0);
+    int ncpu = 0;
+    len = sizeof(ncpu);
+    if (sysctlbyname("hw.logicalcpu", &ncpu, &len, NULL, 0) == 0 && ncpu > 0) si->cores = ncpu;
 #endif
     clean_text(si->distro);
     clean_text(si->distro_version);
@@ -198,12 +221,12 @@ static int build_report(const warp_seed_config_t *cfg, char *buf, size_t sz) {
     warp_sysinfo_t si;
     sysinfo_collect(&si);
     return snprintf(buf, sz,
-        "{\"node_id\":\"%s\",\"version\":\"%s\",\"os\":\"%s\",\"arch\":\"%s\","
+        "{\"node_id\":\"%s\",\"version\":\"%s\",\"os\":\"%s\",\"arch\":\"%s\",\"libc\":\"%s\","
         "\"kernel\":\"%s\",\"distro\":\"%s\",\"distro_version\":\"%s\","
         "\"cpu\":\"%s\",\"cores\":%d,\"ram_gb\":%d,"
         "\"volunteer\":%s,\"uploaded_bytes\":%llu,\"served\":%llu,"
         "\"packages\":%zu}",
-        cfg->node_id, WARP_VERSION, WARP_OS, WARP_ARCH,
+        cfg->node_id, WARP_VERSION, WARP_OS, WARP_ARCH, warp_libc(),
         si.kernel, si.distro, si.distro_version, si.cpu, si.cores, si.ram_gb,
         cfg->volunteer ? "true" : "false",
         cfg->uploaded_total, cfg->served_total, seedable_packages());
@@ -223,6 +246,7 @@ void stats_print_disclosure(const warp_seed_config_t *cfg) {
            "                   name, hardware or account (new one: warp stats --reset-id)\n");
     printf("  os, arch         the operating system and CPU architecture warp runs on; they feed\n"
            "                   the public platform survey (percentages only, like a hardware survey)\n");
+    printf("  libc             the C library of the system: glibc, musl or bionic (empty on macOS); decides which builds fit\n");
     printf("  kernel           the kernel's major.minor version (for example 6.18), not the full string\n");
     printf("  distro           distribution id and version from /etc/os-release (for example alpine 3.20)\n");
     printf("  cpu, cores       the processor model as the system reports it, and its logical core count\n");
