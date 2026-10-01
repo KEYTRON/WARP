@@ -77,6 +77,7 @@ int seed_config_load(warp_seed_config_t *cfg) {
     cfg->served_total        = (unsigned long long)json_num(j, "served_total",   0);
     cfg->stats_consent       = (int)   json_num(j, "stats_consent",        0);
     cfg->consent_asked       = (int)   json_num(j, "consent_asked",        0);
+    cfg->consent_schema      = (int)   json_num(j, "consent_schema",       cfg->stats_consent ? 1 : 0);
     strncpy(cfg->month_tag, json_str(j, "month_tag", ""), sizeof(cfg->month_tag) - 1);
     strncpy(cfg->node_id,   json_str(j, "node_id",   ""), sizeof(cfg->node_id) - 1);
     json_free(j);
@@ -120,6 +121,7 @@ int seed_config_save(const warp_seed_config_t *cfg) {
         "  \"served_total\": %llu,\n"
         "  \"stats_consent\": %d,\n"
         "  \"consent_asked\": %d,\n"
+        "  \"consent_schema\": %d,\n"
         "  \"node_id\": \"%s\"\n"
         "}\n",
         cfg->quota_bytes, cfg->serve,
@@ -127,7 +129,7 @@ int seed_config_save(const warp_seed_config_t *cfg) {
         cfg->cheap_sd, cfg->month_tag,
         cfg->volunteer, cfg->unlimited, cfg->max_packages, cfg->reserve_bytes,
         cfg->uploaded_total, cfg->served_total,
-        cfg->stats_consent, cfg->consent_asked, cfg->node_id);
+        cfg->stats_consent, cfg->consent_asked, cfg->consent_schema, cfg->node_id);
 
     /* tmp + rename: a crash must not leave half a config (it holds the counters) */
     char tmp[sizeof(WARP_SEED_CONF) + 8];

@@ -167,8 +167,13 @@ sleep 1
 grep "^/warp/stats" "$T/tracker.log" | head -1 | sed 's#^/warp/stats ##' | python3 -c '
 import json,sys
 d=json.load(sys.stdin)
-assert set(d)=={"node_id","version","os","arch","volunteer","uploaded_bytes","served","packages"}, sorted(d)
+assert set(d)=={"node_id","version","os","arch","kernel","distro","distro_version","cpu","cores","ram_gb","volunteer","uploaded_bytes","served","packages"}, sorted(d)
 assert d["os"] == "linux" and d["arch"] in ("x86_64","aarch64"), (d["os"], d["arch"])
+import re
+assert re.fullmatch(r"\d+\.\d+", d["kernel"]), "kernel must be major.minor only: %r" % d["kernel"]
+assert isinstance(d["cores"], int) and d["cores"] >= 1, d["cores"]
+assert d["ram_gb"] in (1,2,3,4,6,8,12,16,24,32,48,64,96,128,192,256,384,512,1024), d["ram_gb"]
+assert all(32 <= ord(c) < 127 and c not in "\"\\" for c in d["cpu"] + d["distro"]), "text fields must be plain"
 assert len(d["node_id"])==32' || fail "report fields differ from the disclosure"
 ok "report sent with consent, fields match the disclosure"
 
@@ -184,5 +189,23 @@ ok "warp stats and warp --help show node and network numbers"
 [ "$(cfgval stats_consent)" = "0" ] || fail "opt-out not saved"
 kill -TERM $NODE; wait $NODE 2>/dev/null || true
 ok "opt-out works"
+
+# 12. a consent given for an older, smaller report does not cover the new fields
+python3 - "$T/store/seed.conf" <<'PY'
+import json, sys
+c = json.load(open(sys.argv[1])); c["stats_consent"] = 1; c["consent_schema"] = 1
+json.dump(c, open(sys.argv[1], "w"))
+PY
+rm -f "$T/tracker.log"
+"$W" volunteer --quota 1G --port $NP >"$T/node5.log" 2>&1 & NODE=$!; PIDS="$PIDS $NODE"
+wait_port $NP || { cat "$T/node5.log"; fail "node 5 did not start"; }
+sleep 1
+if [ -f "$T/tracker.log" ] && grep -q "^/warp/stats" "$T/tracker.log"; then fail "a report was sent on a consent for an older report"; fi
+"$W" stats --offline | plain | grep -q "paused" || fail "warp stats does not say the report is paused"
+python3 "$T/ask.py" "y" stats --consent > /dev/null
+sleep 2
+grep -q "^/warp/stats" "$T/tracker.log" || fail "no report after the user accepted the new one"
+kill -TERM $NODE; wait $NODE 2>/dev/null || true
+ok "an older consent pauses the report until the user has seen the new fields"
 
 echo "PASS: node-stats"

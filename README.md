@@ -95,13 +95,17 @@ moved). `warp --help` ends with a one-line summary taken from local files only.
 `[y/N]`; Enter means no. `warp stats --what` shows it again, `warp stats
 --consent` / `--no-stats` change the answer, `--reset-id` makes a new random
 node id. The report carries a random node id, the warp version, the OS and
-architecture (they feed the public platform survey: percentages only, one count
-per node per month), whether volunteer mode is on, bytes and packages sent, and how
+architecture, and a coarse hardware profile like a hardware survey (kernel as
+major.minor, distribution and version, CPU model and core count, memory rounded
+to a standard size); it all feeds the public platform survey: percentages only,
+one count per node per month. It also says whether volunteer mode is on, bytes and packages sent, and how
 many packages the node can seed — no file names, no paths, no package
 contents. Seeding itself still tells the tracker your address, port and the
 names of the packages you seed (peers need that to find you); that is separate
 from the statistics. Network totals are the sum of what consenting nodes
 report and are not verified.
+
+When a new version adds fields to the report, the earlier answer does not cover them: the node sends nothing until you have seen the new report (`warp stats --consent`).
 
 ## Versions side by side
 

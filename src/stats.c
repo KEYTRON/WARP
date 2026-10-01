@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <sys/stat.h>
+#include <ctype.h>
 #include <curl/curl.h>
 #include "warp.h"
 
@@ -29,6 +30,159 @@ void stats_ensure_node_id(warp_seed_config_t *cfg) {
         snprintf(cfg->node_id + i * 2, 3, "%02x", raw[i]);
 }
 
+
+/* ══════════════════════════════════════════════════════════════
+ *  What the survey asks about this machine. Everything is coarse on purpose:
+ *  the kernel as major.minor, memory rounded to a standard size, no host
+ *  name, no serial numbers, no addresses. The user sees the exact values in
+ *  `warp stats --what` before agreeing.
+ * ══════════════════════════════════════════════════════════════ */
+
+typedef struct {
+    char kernel[16];          /* "6.18" */
+    char distro[32];          /* /etc/os-release ID */
+    char distro_version[24];  /* VERSION_ID, empty on rolling distributions */
+    char cpu[72];             /* processor model, tidied */
+    int  cores;               /* logical cores */
+    int  ram_gb;              /* installed memory, standard size */
+} warp_sysinfo_t;
+
+/* Printable ASCII without the characters that would break the JSON. */
+static void clean_text(char *s) {
+    char *o = s;
+    for (; *s; s++) {
+        unsigned char c = (unsigned char)*s;
+        if (c < 32 || c > 126) continue;
+        *o++ = (c == '"' || c == '\\') ? ' ' : (char)c;
+    }
+    *o = '\0';
+}
+
+#if defined(__linux__)
+/* /proc files report size 0, so they must be read until EOF (read_file trusts the size). */
+static char *read_stream(const char *path) {
+    FILE *f = fopen(path, "r");
+    if (!f) return NULL;
+    size_t cap = 4096, len = 0;
+    char *buf = malloc(cap);
+    while (buf) {
+        size_t n = fread(buf + len, 1, cap - len - 1, f);
+        len += n;
+        if (n == 0 || len + 1 < cap) break;
+        cap *= 2;
+        buf = realloc(buf, cap);
+    }
+    fclose(f);
+    if (buf) buf[len] = '\0';
+    return buf;
+}
+
+static int first_line_value(const char *path, const char *key, char *out, size_t sz) {
+    char *s = read_stream(path);
+    if (!s) return 0;
+    size_t kl = strlen(key);
+    int found = 0;
+    for (char *line = s; line && *line; ) {
+        char *nl = strchr(line, '\n');
+        if (nl) *nl = '\0';
+        if (strncmp(line, key, kl) == 0) {
+            const char *v = line + kl;
+            while (*v == ' ' || *v == '\t' || *v == ':' || *v == '=') v++;
+            snprintf(out, sz, "%s", v);
+            found = 1;
+            break;
+        }
+        line = nl ? nl + 1 : NULL;
+    }
+    free(s);
+    return found;
+}
+
+static void os_release_value(const char *key, char *out, size_t sz) {
+    char buf[96] = "";
+    if (!first_line_value("/etc/os-release", key, buf, sizeof(buf)))
+        first_line_value("/usr/lib/os-release", key, buf, sizeof(buf));
+    char *v = buf;
+    if (*v == '"' || *v == '\'') { v++; v[strcspn(v, "\"'")] = '\0'; }
+    snprintf(out, sz, "%s", v);
+}
+
+/* Intel(R) Core(TM) i5-3470 CPU @ 3.20GHz -> Intel Core i5-3470 */
+static void tidy_cpu(char *cpu) {
+    static const char *drop[] = { "(R)", "(TM)", "(tm)", "(r)", " CPU", "Processor", NULL };
+    for (int i = 0; drop[i]; i++) {
+        char *p;
+        while ((p = strstr(cpu, drop[i])) != NULL) memmove(p, p + strlen(drop[i]), strlen(p + strlen(drop[i])) + 1);
+    }
+    char *at = strstr(cpu, " @");
+    if (at) *at = '\0';
+    /* collapse runs of blanks and trim */
+    char *o = cpu; int blank = 1;
+    for (char *p = cpu; *p; p++) {
+        if (*p == ' ' || *p == '\t') { if (!blank) *o++ = ' '; blank = 1; }
+        else { *o++ = *p; blank = 0; }
+    }
+    if (o > cpu && o[-1] == ' ') o--;
+    *o = '\0';
+}
+
+static const char *arm_vendor(unsigned imp) {
+    switch (imp) {
+        case 0x41: return "ARM";      case 0x42: return "Broadcom";  case 0x43: return "Cavium";
+        case 0x4e: return "NVIDIA";   case 0x51: return "Qualcomm";  case 0x61: return "Apple";
+        case 0xc0: return "Ampere";   default: return "ARM";
+    }
+}
+#endif
+
+/* Memory, rounded to the standard size it was sold as: a 16 GB machine reports ~15.5 GiB. */
+static int ram_bucket(double gib) {
+    static const int sizes[] = { 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 1024 };
+    for (size_t i = 0; i < sizeof(sizes) / sizeof(*sizes); i++)
+        if ((double)sizes[i] >= gib * 0.93) return sizes[i];
+    return 1024;
+}
+
+static void sysinfo_collect(warp_sysinfo_t *si) {
+    memset(si, 0, sizeof(*si));
+#if defined(__linux__)
+    char buf[160];
+
+    {
+        char *k = read_stream("/proc/sys/kernel/osrelease");
+        int maj = 0, min = 0;
+        if (k && sscanf(k, "%d.%d", &maj, &min) == 2 && maj > 0) snprintf(si->kernel, sizeof(si->kernel), "%d.%d", maj, min);
+        free(k);
+    }
+
+    os_release_value("ID", si->distro, sizeof(si->distro));
+    os_release_value("VERSION_ID", si->distro_version, sizeof(si->distro_version));
+    for (char *p = si->distro; *p; p++) *p = (char)tolower((unsigned char)*p);
+#if defined(__ANDROID__)
+    if (!si->distro[0]) snprintf(si->distro, sizeof(si->distro), "termux");
+#endif
+
+    if (!first_line_value("/proc/cpuinfo", "model name", si->cpu, sizeof(si->cpu)) &&
+        !first_line_value("/proc/cpuinfo", "Hardware", si->cpu, sizeof(si->cpu))) {
+        char imp[24] = "", part[24] = "";
+        if (first_line_value("/proc/cpuinfo", "CPU implementer", imp, sizeof(imp))) {
+            first_line_value("/proc/cpuinfo", "CPU part", part, sizeof(part));
+            snprintf(si->cpu, sizeof(si->cpu), "%s part %s", arm_vendor((unsigned)strtoul(imp, NULL, 0)), part[0] ? part : "?");
+        }
+    }
+    clean_text(si->cpu);
+    tidy_cpu(si->cpu);
+
+    long mem_kb = 0;
+    if (first_line_value("/proc/meminfo", "MemTotal", buf, sizeof(buf))) mem_kb = atol(buf);
+    if (mem_kb > 0) si->ram_gb = ram_bucket((double)mem_kb / 1048576.0);
+    long n = sysconf(_SC_NPROCESSORS_ONLN);
+    si->cores = n > 0 ? (int)n : 0;
+#endif
+    clean_text(si->distro);
+    clean_text(si->distro_version);
+}
+
 static size_t seedable_packages(void) {
     size_t n = volunteer_count();
     warp_installed_t *list = NULL;
@@ -41,11 +195,16 @@ static size_t seedable_packages(void) {
 }
 
 static int build_report(const warp_seed_config_t *cfg, char *buf, size_t sz) {
+    warp_sysinfo_t si;
+    sysinfo_collect(&si);
     return snprintf(buf, sz,
         "{\"node_id\":\"%s\",\"version\":\"%s\",\"os\":\"%s\",\"arch\":\"%s\","
+        "\"kernel\":\"%s\",\"distro\":\"%s\",\"distro_version\":\"%s\","
+        "\"cpu\":\"%s\",\"cores\":%d,\"ram_gb\":%d,"
         "\"volunteer\":%s,\"uploaded_bytes\":%llu,\"served\":%llu,"
         "\"packages\":%zu}",
         cfg->node_id, WARP_VERSION, WARP_OS, WARP_ARCH,
+        si.kernel, si.distro, si.distro_version, si.cpu, si.cores, si.ram_gb,
         cfg->volunteer ? "true" : "false",
         cfg->uploaded_total, cfg->served_total, seedable_packages());
 }
@@ -53,7 +212,7 @@ static int build_report(const warp_seed_config_t *cfg, char *buf, size_t sz) {
 void stats_print_disclosure(const warp_seed_config_t *cfg) {
     warp_seed_config_t tmp = *cfg;
     stats_ensure_node_id(&tmp);
-    char body[512];
+    char body[1024];
     build_report(&tmp, body, sizeof(body));
 
     printf("\n  " WARP_BOLD "Anonymous statistics" WARP_RESET "\n\n");
@@ -64,11 +223,16 @@ void stats_print_disclosure(const warp_seed_config_t *cfg) {
            "                   name, hardware or account (new one: warp stats --reset-id)\n");
     printf("  os, arch         the operating system and CPU architecture warp runs on; they feed\n"
            "                   the public platform survey (percentages only, like a hardware survey)\n");
+    printf("  kernel           the kernel's major.minor version (for example 6.18), not the full string\n");
+    printf("  distro           distribution id and version from /etc/os-release (for example alpine 3.20)\n");
+    printf("  cpu, cores       the processor model as the system reports it, and its logical core count\n");
+    printf("  ram_gb           installed memory rounded to a standard size (for example 16), not the exact amount\n");
     printf("  uploaded_bytes   how much this node has sent to other peers in total\n");
     printf("  served           how many packages it has sent\n");
     printf("  packages         how many packages it can seed\n");
     printf("  volunteer        whether volunteer mode is on\n\n");
-    printf("  Not sent in this report: file names, paths, package contents, who downloaded what.\n");
+    printf("  Not sent in this report: host name, user name, disks, network addresses, serial numbers,\n"
+           "  file names, paths, package contents, who downloaded what.\n");
     printf("  Separately from this report, seeding itself (warp seed) tells the tracker\n"
            "  your address, port and the names of packages you seed — peers need that to\n"
            "  find you. That does not depend on this answer.\n\n");
@@ -84,6 +248,7 @@ int stats_ask_consent(warp_seed_config_t *cfg) {
     if (!fgets(inp, sizeof(inp), stdin)) return 0;
     cfg->stats_consent = (inp[0] == 'y' || inp[0] == 'Y') ? 1 : 0;
     cfg->consent_asked = 1;
+    cfg->consent_schema = cfg->stats_consent ? WARP_REPORT_SCHEMA : 0;
     if (cfg->stats_consent) stats_ensure_node_id(cfg);
     printf("\n  %s\n\n", cfg->stats_consent
         ? "Thank you. Change your mind any time: warp stats --no-stats"
@@ -93,6 +258,15 @@ int stats_ask_consent(warp_seed_config_t *cfg) {
 
 int stats_report(const warp_seed_config_t *cfg) {
     if (!cfg->stats_consent || strlen(cfg->node_id) != 32) return WARP_OK;
+    /* The report has grown since the user agreed: send nothing until they have seen the new one. */
+    if (cfg->consent_schema < WARP_REPORT_SCHEMA) {
+        static int warned;
+        if (!warned) {
+            warned = 1;
+            warp_warn("The statistics report now has more fields; nothing is sent until you review it: warp stats --consent");
+        }
+        return WARP_OK;
+    }
 
     char body[512];
     build_report(cfg, body, sizeof(body));
@@ -172,7 +346,9 @@ void stats_print_local(const warp_seed_config_t *cfg) {
     printf("\n");
     printf("  Sent in total:  %s in %llu package transfers\n", up, cfg->served_total);
     printf("  Sent this month:%s %s\n", " ", month);
-    printf("  Statistics to tracker: %s\n", cfg->stats_consent ? WARP_GREEN "on" WARP_RESET : "off");
+    printf("  Statistics to tracker: %s\n", !cfg->stats_consent ? "off"
+           : cfg->consent_schema < WARP_REPORT_SCHEMA ? WARP_YELLOW "paused: the report grew, review it with 'warp stats --consent'" WARP_RESET
+           : WARP_GREEN "on" WARP_RESET);
 }
 
 void stats_print_network(void) {

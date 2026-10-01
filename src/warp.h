@@ -6,7 +6,7 @@
 #include <sys/types.h>
 
 /* ── version & paths ─────────────────────────────────────────── */
-#define WARP_VERSION     "0.4.3"
+#define WARP_VERSION     "0.4.4"
 #ifndef WARP_STORE_DIR
 #define WARP_STORE_DIR   "/var/lib/warp"
 #endif
@@ -186,9 +186,13 @@ typedef struct {
     unsigned long long served_total;     /* packages sent over the whole life */
     int    stats_consent;        /* 1=user agreed to send anonymous counters */
     int    consent_asked;        /* 1=the question has been asked already   */
+    int    consent_schema;       /* which report the consent covers (see WARP_REPORT_SCHEMA) */
     char   node_id[33];          /* random anonymous node id (hex)          */
 } warp_seed_config_t;
 
+/* The anonymous report grows now and then; a consent given for an older, smaller
+ * one does not cover the new fields until the user has seen and accepted them. */
+#define WARP_REPORT_SCHEMA   2
 #define WARP_RESERVE_DEFAULT ((size_t)1073741824)   /* keep 1 GiB free */
 #define WARP_NODE_PID        WARP_STORE_DIR "/node.pid"
 #define WARP_NET_STATS_CACHE WARP_STORE_DIR "/net-stats.json"
