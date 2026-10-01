@@ -2,9 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <openssl/evp.h>
-#include <openssl/err.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
 #include "warp.h"
+#include "vendor/monocypher.h"
+#include "vendor/monocypher-ed25519.h"
 
 /* ── master public key ──────────────────────────────────────────
  * Ed25519 public key for the KEYTRON/WARP release signing key.
@@ -19,53 +23,49 @@ const uint8_t WARP_MASTER_PUBKEY[32] = {
 };
 
 /* ── SHA256 of a file ─────────────────────────────────────────── */
+static void hex_of(const uint8_t *d, size_t n, char *out) {
+    static const char hx[] = "0123456789abcdef";
+    for (size_t i = 0; i < n; i++) { out[2*i] = hx[d[i] >> 4]; out[2*i+1] = hx[d[i] & 15]; }
+    out[2*n] = '\0';
+}
+
 int warp_sha256_file(const char *path, char out_hex[WARP_SHA256_HEX]) {
     FILE *f = fopen(path, "rb");
     if (!f) return WARP_ERR_IO;
 
-    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
-    if (!ctx) { fclose(f); return WARP_ERR_IO; }
-
-    int rc = WARP_OK;
-    if (EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) != 1) {
-        rc = WARP_ERR_HASH; goto done;
-    }
-
+    warp_sha256_t ctx;
+    warp_sha256_init(&ctx);
     uint8_t buf[65536];
     size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
-        if (EVP_DigestUpdate(ctx, buf, n) != 1) {
-            rc = WARP_ERR_HASH; goto done;
-        }
-    }
-    if (ferror(f)) { rc = WARP_ERR_IO; goto done; }
-
-    uint8_t digest[EVP_MAX_MD_SIZE];
-    unsigned int digest_len = 0;
-    if (EVP_DigestFinal_ex(ctx, digest, &digest_len) != 1) {
-        rc = WARP_ERR_HASH; goto done;
-    }
-
-    for (unsigned int i = 0; i < digest_len; i++)
-        snprintf(out_hex + i*2, 3, "%02x", digest[i]);
-    out_hex[digest_len * 2] = '\0';
-
-done:
-    EVP_MD_CTX_free(ctx);
+    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) warp_sha256_update(&ctx, buf, n);
+    int bad = ferror(f);
     fclose(f);
-    return rc;
+    if (bad) return WARP_ERR_IO;
+
+    uint8_t digest[32];
+    warp_sha256_final(&ctx, digest);
+    hex_of(digest, 32, out_hex);
+    return WARP_OK;
 }
 
 /* ── SHA256 of a buffer ───────────────────────────────────────── */
 int warp_sha256_buf(const uint8_t *buf, size_t len, char out_hex[WARP_SHA256_HEX]) {
-    uint8_t digest[EVP_MAX_MD_SIZE];
-    unsigned int digest_len = 0;
-    if (!EVP_Digest(buf, len, digest, &digest_len, EVP_sha256(), NULL))
-        return WARP_ERR_HASH;
-    for (unsigned int i = 0; i < digest_len; i++)
-        snprintf(out_hex + i*2, 3, "%02x", digest[i]);
-    out_hex[digest_len * 2] = '\0';
+    warp_sha256_t ctx;
+    uint8_t digest[32];
+    warp_sha256_init(&ctx);
+    warp_sha256_update(&ctx, buf, len);
+    warp_sha256_final(&ctx, digest);
+    hex_of(digest, 32, out_hex);
     return WARP_OK;
+}
+
+/* ── randomness from the operating system, fail closed ───────── */
+int warp_random(void *buf, size_t len) {
+    FILE *f = fopen("/dev/urandom", "rb");
+    if (!f) return WARP_ERR_IO;
+    size_t got = fread(buf, 1, len, f);
+    fclose(f);
+    return got == len ? WARP_OK : WARP_ERR_IO;
 }
 
 /* ── base64 decode (simple, no padding variants; tolerates
@@ -161,48 +161,22 @@ int warp_ed25519_verify(const uint8_t *msg, size_t msg_len,
     (void)msg; (void)msg_len; (void)sig; (void)pubkey;
     return WARP_OK;
 #else
-    EVP_PKEY *pkey = EVP_PKEY_new_raw_public_key(
-        EVP_PKEY_ED25519, NULL, pubkey, 32);
-    if (!pkey) return WARP_ERR_SIG;
-
-    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
-    if (!ctx) { EVP_PKEY_free(pkey); return WARP_ERR_SIG; }
-
-    int rc = WARP_ERR_SIG;
-    if (EVP_DigestVerifyInit(ctx, NULL, NULL, NULL, pkey) == 1 &&
-        EVP_DigestVerify(ctx, sig, 64, msg, msg_len) == 1) {
-        rc = WARP_OK;
-    }
-
-    EVP_MD_CTX_free(ctx);
-    EVP_PKEY_free(pkey);
-    return rc;
+    /* Standard Ed25519 (RFC 8032). crypto_ed25519_check returns 0 only for a
+     * valid signature; it also rejects a non-canonical S and invalid points. */
+    return crypto_ed25519_check(sig, pubkey, msg, msg_len) == 0 ? WARP_OK : WARP_ERR_SIG;
 #endif
 }
 
 int warp_sign_buf(const uint8_t *msg, size_t msg_len,
                    const uint8_t *privkey, size_t privkey_len,
                    uint8_t sig[64]) {
-    EVP_PKEY *pkey = EVP_PKEY_new_raw_private_key(EVP_PKEY_ED25519, NULL, privkey, privkey_len);
-    if (!pkey) return WARP_ERR_SIG;
-
-    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
-    if (!ctx) {
-        EVP_PKEY_free(pkey);
-        return WARP_ERR_SIG;
-    }
-
-    size_t sig_len = 64;
-    int rc = WARP_ERR_SIG;
-    if (EVP_DigestSignInit(ctx, NULL, NULL, NULL, pkey) == 1 &&
-        EVP_DigestSign(ctx, sig, &sig_len, msg, msg_len) == 1 &&
-        sig_len == 64) {
-        rc = WARP_OK;
-    }
-
-    EVP_MD_CTX_free(ctx);
-    EVP_PKEY_free(pkey);
-    return rc;
+    if (privkey_len != 32) return WARP_ERR_SIG;       /* the 32-byte seed, as `warp keygen` writes it */
+    uint8_t seed[32], sk[64], pk[32];
+    memcpy(seed, privkey, 32);
+    crypto_ed25519_key_pair(sk, pk, seed);            /* wipes the seed copy */
+    crypto_ed25519_sign(sig, sk, msg, msg_len);
+    crypto_wipe(sk, sizeof(sk));
+    return WARP_OK;
 }
 
 int warp_sign_file(const char *path, const char *privkey_hex_path, char out_b64[128]) {
@@ -264,48 +238,58 @@ int warp_verify_index_sig(const char *data, const char *sig_b64) {
 }
 
 /* ── keygen: generate Ed25519 keypair ────────────────────────── */
+static int write_hex_file(const char *path, const uint8_t *v, size_t n, mode_t mode) {
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, mode);
+    if (fd < 0) return WARP_ERR_IO;
+    char line[2 * 64 + 2];
+    hex_of(v, n, line);
+    line[2 * n] = '\n';
+    ssize_t w = write(fd, line, 2 * n + 1);
+    int rc = (w == (ssize_t)(2 * n + 1)) ? WARP_OK : WARP_ERR_IO;
+    if (close(fd) != 0) rc = WARP_ERR_IO;
+    crypto_wipe(line, sizeof(line));
+    return rc;
+}
+
 int warp_keygen(const char *privkey_path, const char *pubkey_path) {
-    EVP_PKEY_CTX *kctx = EVP_PKEY_CTX_new_id(EVP_PKEY_ED25519, NULL);
-    if (!kctx) return WARP_ERR_IO;
+    uint8_t seed[32], keep[32], sk[64], pub[32];
+    if (warp_random(seed, sizeof(seed)) != WARP_OK) return WARP_ERR_IO;
+    memcpy(keep, seed, 32);
+    crypto_ed25519_key_pair(sk, pub, seed);           /* wipes `seed` */
+    crypto_wipe(sk, sizeof(sk));
 
-    EVP_PKEY *pkey = NULL;
     int rc = WARP_ERR_IO;
-
-    if (EVP_PKEY_keygen_init(kctx) != 1) goto done;
-    if (EVP_PKEY_keygen(kctx, &pkey) != 1) goto done;
-
-    /* Export raw keys */
-    uint8_t priv[64], pub[32];
-    size_t priv_len = 64, pub_len = 32;
-    if (EVP_PKEY_get_raw_private_key(pkey, priv, &priv_len) != 1) goto done;
-    if (EVP_PKEY_get_raw_public_key (pkey, pub,  &pub_len)  != 1) goto done;
-
-    /* Write hex files */
-    FILE *fp = fopen(privkey_path, "w");
-    if (!fp) goto done;
-    for (size_t i = 0; i < priv_len; i++) fprintf(fp, "%02x", priv[i]);
-    fprintf(fp, "\n");
-    fclose(fp);
-
-    fp = fopen(pubkey_path, "w");
-    if (!fp) goto done;
-    for (size_t i = 0; i < pub_len; i++) fprintf(fp, "%02x", pub[i]);
-    fprintf(fp, "\n");
-    fclose(fp);
+    /* The private key is secret: 0600, never world-readable. */
+    if (write_hex_file(privkey_path, keep, 32, 0600) != WARP_OK) goto done;
+    if (write_hex_file(pubkey_path, pub, 32, 0644) != WARP_OK) goto done;
 
     /* Print C array for embedding */
     printf("/* Paste into crypto.c WARP_MASTER_PUBKEY: */\n");
     printf("static const uint8_t WARP_MASTER_PUBKEY[32] = {\n    ");
-    for (size_t i = 0; i < pub_len; i++) {
+    for (size_t i = 0; i < 32; i++) {
         printf("0x%02x", pub[i]);
-        if (i < pub_len - 1) printf(",");
-        if ((i + 1) % 8 == 0 && i < pub_len - 1) printf("\n    ");
+        if (i < 31) printf(",");
+        if ((i + 1) % 8 == 0 && i < 31) printf("\n    ");
     }
     printf("\n};\n");
-
     rc = WARP_OK;
 done:
-    if (pkey) EVP_PKEY_free(pkey);
-    EVP_PKEY_CTX_free(kctx);
+    crypto_wipe(keep, sizeof(keep));
     return rc;
+}
+
+/* The public key that goes with a private-key file (the 32-byte seed in hex). */
+int warp_pubkey_of(const char *privkey_hex_path, uint8_t pub[32]) {
+    size_t n = 0;
+    char *hex = read_file(privkey_hex_path, &n);
+    if (!hex) return WARP_ERR_IO;
+    uint8_t seed[64] = {0}, sk[64];
+    size_t len = 0;
+    int rc = warp_hex_decode(hex, seed, sizeof(seed), &len);
+    free(hex);
+    if (rc != WARP_OK || len != 32) { crypto_wipe(seed, sizeof(seed)); return WARP_ERR_SIG; }
+    crypto_ed25519_key_pair(sk, pub, seed);
+    crypto_wipe(sk, sizeof(sk));
+    crypto_wipe(seed, sizeof(seed));
+    return WARP_OK;
 }

@@ -6,7 +6,6 @@ RUN dnf -y install \
     gcc \
     libcurl-devel \
     make \
-    openssl-devel \
     pkgconf-pkg-config \
     && dnf clean all
 
@@ -20,7 +19,6 @@ RUN dnf -y install \
     ca-certificates \
     curl \
     libcurl \
-    openssl-libs \
     && dnf clean all
 
 WORKDIR /workspace

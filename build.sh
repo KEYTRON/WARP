@@ -13,10 +13,10 @@ log_warn()  { echo -e "${YELLOW}[warp]${NC} $1"; }
 log_error() { echo -e "${RED}[warp]${NC} $1"; }
 
 check_deps() {
-    for dep in gcc curl-config openssl; do
+    for dep in gcc curl-config; do
         if ! command -v "$dep" &>/dev/null; then
             log_error "Missing build dependency: $dep"
-            log_warn  "Install: sudo dnf install gcc libcurl-devel openssl-devel"
+            log_warn  "Install: sudo dnf install gcc libcurl-devel"
             exit 1
         fi
     done

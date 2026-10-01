@@ -1,6 +1,6 @@
 CC      = gcc
 CFLAGS  = -O2 -Wall -std=c11 -D_GNU_SOURCE -Wno-unused-const-variable
-LDFLAGS = -lcurl -lssl -lcrypto
+LDFLAGS = -lcurl
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 
@@ -16,7 +16,10 @@ SRCS    = $(SRC_DIR)/main.c \
           $(SRC_DIR)/delta.c \
           $(SRC_DIR)/p2p.c \
           $(SRC_DIR)/stats.c \
-          $(SRC_DIR)/versions.c
+          $(SRC_DIR)/versions.c \
+          $(SRC_DIR)/sha256.c \
+          $(SRC_DIR)/vendor/monocypher.c \
+          $(SRC_DIR)/vendor/monocypher-ed25519.c
 
 OBJS    = $(SRCS:.c=.o)
 TARGET  = warp

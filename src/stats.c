@@ -280,7 +280,7 @@ int stats_report(const warp_seed_config_t *cfg) {
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, hdrs);
     curl_easy_setopt(curl, CURLOPT_USERAGENT,  "warp/" WARP_VERSION);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT,    10L);
-    curl_easy_setopt(curl, CURLOPT_CAINFO,     "/etc/ssl/certs/ca-certificates.crt");
+    if (warp_ca_bundle()) curl_easy_setopt(curl, CURLOPT_CAINFO, warp_ca_bundle());
     FILE *devnull = fopen("/dev/null", "w");
     if (devnull) curl_easy_setopt(curl, CURLOPT_WRITEDATA, devnull);
 

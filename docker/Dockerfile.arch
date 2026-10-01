@@ -4,7 +4,6 @@ RUN yes | pacman -Sy --needed \
     base-devel \
     ca-certificates \
     curl \
-    openssl \
     pkgconf \
     && yes | pacman -Scc
 
@@ -17,7 +16,6 @@ FROM archlinux:latest
 RUN yes | pacman -Sy --needed \
     ca-certificates \
     curl \
-    openssl \
     && yes | pacman -Scc
 
 WORKDIR /workspace

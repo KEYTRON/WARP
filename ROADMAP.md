@@ -50,8 +50,8 @@ All packages are built for x86_64 today, and the architecture exists only in the
 - [x] Platform in the index (`builds` per `<os>-<arch>`): the client takes only the build for its own OS and CPU and never compiles
 - [ ] Packages and CI for aarch64 (WARP itself builds and passes its tests on linux/aarch64 in an OrbStack machine on the MacBook; a runner and published packages are still to do)
 - [ ] riscv64 — once there is real hardware to test on
-- [ ] The C library in the platform: glibc, musl (Alpine, Void musl) and bionic (Android) are different ABIs, and Void Linux ships both glibc and musl. Today `linux-x86_64` means glibc, so a musl machine would pick a glibc build that cannot start. Planned: `-musl` builds next to the glibc ones, `-static` builds that run on any libc, the client takes its exact libc first and a static build second, and the survey and the site switchers learn the libc too
-- [ ] CI runners for the other platforms: native macOS (on the MacBook), linux/aarch64 (the OrbStack machine on the MacBook is ready), Termux (none yet; to be started by hand when the phone is at home and charging, so it does not drain the battery away from home)
+- [ ] The C library in the platform. glibc, musl (Alpine, Void musl) and bionic (Android) are different ABIs, and Void Linux ships both glibc and musl: today `linux-x86_64` means glibc, so a musl machine would take a build that cannot even start (checked: the dynamic build on Void musl answers "not found"). Decision: the platform learns the C library, detected at run time (the interpreter of `/bin/sh`), not at build time. Builds: `linux-x86_64` (glibc, as before), `linux-x86_64-musl`, and `linux-x86_64-static` for a fully static build that runs on every Linux. The client takes its exact libc first and the static build second; a musl machine never takes a glibc build. Fully static packages (Go, Rust, upstream static builds such as ripgrep, jq, btop) are published once as `static`. WARP itself ships as a static binary (`tools/build-static.sh`: works on Gentoo glibc and Void musl alike). The survey and the site switchers learn the libc too
+- [ ] CI runners for the other platforms (each becomes its own workflow, so the CI block on the site shows it): native macOS (on the MacBook), linux/aarch64 (the OrbStack machine on the MacBook is ready), Termux (none yet; to be started by hand when the phone is at home and charging, so it does not drain the battery away from home)
 
 ## Versions side by side (idea from the user, 2026-10-01)
 Today several versions already sit in the store (`store/<name>-<hash12>`), but only one `prev` link exists: rollback toggles between two.
@@ -61,6 +61,31 @@ Today several versions already sit in the store (`store/<name>-<hash12>`), but o
 - [x] `warp run name@1.2 -- args`: start a specific version without switching the active one
 - [x] `warp gc`: remove versions that are not active, pinned or in the recent history (the disk is limited)
 - [ ] Different dependents using different versions of a dependency at once (the Nix closure model): needs packages that find their dependencies by store path; after the dependency resolver
+
+## macOS (native)
+Checked on Apple Silicon without Homebrew: WARP builds with the Command Line Tools alone, links only the system `libcurl` and `libSystem`, knows it is `macos-aarch64`, verifies a real signed index and refuses a package without a macOS build with a clear message.
+- [x] No OpenSSL (own SHA-256, vendored Ed25519), so nothing but the Command Line Tools is needed to build
+- [x] The CA bundle is looked up per system (macOS keeps it in `/etc/ssl/cert.pem`)
+- [ ] A user-owned prefix with no root (`~/.warp` or `/opt/warp`), `warp shellenv` for the shell profile
+- [ ] An installer: one command that explains what it does, waits for Enter, fetches the prebuilt `macos-aarch64` binary and shows the pinned key fingerprint to compare with the site; a `.pkg` for managed installs later
+- [ ] System facts for the survey on macOS (`sysctl`: OS version, CPU, cores, memory)
+- [ ] The first packages built for `macos-aarch64` (ripgrep, jq, btop from the upstream releases) and published with a `builds` entry
+- [ ] Portable tests (no GNU-only `tar -I`, `timeout`, `stat -c`)
+- [ ] Two CI runners on the MacBook: a native macOS runner and the linux/aarch64 one (the OrbStack machine, already prepared)
+- [ ] Longer term: replace Homebrew on this machine with WARP (the repository becomes the base repository)
+
+## Termux (Android)
+WARP was started there by accident (0.4.1 built from source and ran); SSH access to the phone exists, so it can be tested directly.
+- [ ] Prefix-aware paths: store, binaries and temporary files under `$PREFIX` (no `/var/lib`, no `/usr/local/bin`, no root); the CA bundle at `$PREFIX/etc/tls/cert.pem` (found since 0.4.5)
+- [ ] Installer for Termux (`pkg`-free, prebuilt `android-aarch64` binary)
+- [ ] The first `android-aarch64` packages (static Go and Rust binaries)
+- [ ] A CI runner on the phone that is started by hand when it is at home and charging, so it does not drain the battery away from home
+
+## Documentation in German
+- [ ] `README.de.md`, `ROADMAP.de.md` and `docs/NODES.de.md` next to the English and Russian ones; the site then offers German documentation on the project page too
+
+## Real time on the site
+- [ ] The tracker cards (admin page and the public project card) are updated over a WebSocket instead of polling: the tracker pushes a new snapshot when a node announces or reports
 
 ## Package automation
 - [ ] A recipe per package in a separate repository: where the version comes from, how to verify it (upstream checksum or signature), how to build it, where the license is

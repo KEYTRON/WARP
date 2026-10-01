@@ -488,8 +488,7 @@ int p2p_announce(const char *announce_url, const char *pkg_name,
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER,     hdrs);
     curl_easy_setopt(curl, CURLOPT_USERAGENT,      "warp/" WARP_VERSION);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT,        10L);
-    curl_easy_setopt(curl, CURLOPT_CAINFO,
-                     "/etc/ssl/certs/ca-certificates.crt");
+    if (warp_ca_bundle()) curl_easy_setopt(curl, CURLOPT_CAINFO, warp_ca_bundle());
     /* Discard response body */
     curl_easy_setopt(curl, CURLOPT_NOBODY, 0L);
 

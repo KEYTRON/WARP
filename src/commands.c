@@ -997,6 +997,69 @@ int cmd_stats(int argc, char **argv) {
     return 0;
 }
 
+/* ── warp verify <file> --pubkey <hex> [--sig <file>] ──────────── */
+int cmd_verify(int argc, char **argv) {
+    const char *file = NULL, *sigfile = NULL, *pubhex = NULL;
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "--pubkey") == 0 && i + 1 < argc) pubhex = argv[++i];
+        else if (strcmp(argv[i], "--sig") == 0 && i + 1 < argc) sigfile = argv[++i];
+        else if (!file) file = argv[i];
+        else { file = NULL; break; }
+    }
+    if (!file || !pubhex) {
+        warp_err("Usage: warp verify <file> --pubkey <hex64> [--sig <file>]   (default signature file: <file>.sig)");
+        return 1;
+    }
+    uint8_t pub[32];
+    size_t plen = 0;
+    if (warp_hex_decode(pubhex, pub, sizeof(pub), &plen) != WARP_OK || plen != 32) {
+        warp_err("--pubkey must be 64 hex characters (Ed25519 public key)");
+        return 1;
+    }
+    char sig_path[1024];
+    if (!sigfile) { snprintf(sig_path, sizeof(sig_path), "%s.sig", file); sigfile = sig_path; }
+
+    size_t dlen = 0, slen = 0;
+    char *data = read_file(file, &dlen);
+    char *sig = read_file(sigfile, &slen);
+    if (!data || !sig) {
+        warp_err("Cannot read %s", !data ? file : sigfile);
+        free(data); free(sig);
+        return 1;
+    }
+    /* the signed bytes are exactly the file, including any NUL it may contain */
+    uint8_t raw[64];
+    size_t rawlen = 0;
+    int rc = (warp_base64_decode(sig, raw, &rawlen) == WARP_OK && rawlen == 64)
+                 ? warp_ed25519_verify((const uint8_t *)data, dlen, raw, pub) : WARP_ERR_SIG;
+    free(data); free(sig);
+    if (rc != WARP_OK) { warp_err("Signature does NOT match: %s", file); return 1; }
+    warp_ok("Signature OK: %s", file);
+    return 0;
+}
+
+/* ── warp pubkey <private-key-file> ───────────────────────────── */
+int cmd_pubkey(int argc, char **argv) {
+    if (argc != 1) { warp_err("Usage: warp pubkey <private-key-file>"); return 1; }
+    uint8_t pub[32];
+    if (warp_pubkey_of(argv[0], pub) != WARP_OK) { warp_err("Cannot read a 32-byte hex private key from %s", argv[0]); return 1; }
+    for (int i = 0; i < 32; i++) printf("%02x", pub[i]);
+    printf("\n");
+    return 0;
+}
+
+/* ── warp sha256 <file>... ────────────────────────────────────── */
+int cmd_sha256(int argc, char **argv) {
+    if (argc < 1) { warp_err("Usage: warp sha256 <file>..."); return 1; }
+    int bad = 0;
+    for (int i = 0; i < argc; i++) {
+        char hex[WARP_SHA256_HEX];
+        if (warp_sha256_file(argv[i], hex) != WARP_OK) { warp_err("Cannot read %s", argv[i]); bad = 1; continue; }
+        printf("%s  %s\n", hex, argv[i]);
+    }
+    return bad;
+}
+
 /* ── warp pack <dir> ─────────────────────────────────────────── */
 int cmd_pack(int argc, char **argv) {
     if (argc < 1) { warp_err("Usage: warp pack <directory>"); return 1; }

@@ -4,7 +4,6 @@ RUN apk add --no-cache \
     build-base \
     ca-certificates \
     curl-dev \
-    openssl-dev \
     pkgconf
 
 WORKDIR /src
@@ -15,8 +14,7 @@ FROM alpine:latest
 
 RUN apk add --no-cache \
     ca-certificates \
-    curl \
-    openssl
+    curl
 
 WORKDIR /workspace
 COPY --from=build /src/warp /usr/local/bin/warp

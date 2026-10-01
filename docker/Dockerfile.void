@@ -6,7 +6,6 @@ RUN xbps-install -Suy -y \
     base-devel \
     ca-certificates \
     libcurl-devel \
-    openssl-devel \
     pkg-config \
     && xbps-remove -Oo
 
@@ -21,7 +20,6 @@ RUN xbps-install -Suy -y xbps && xbps-remove -Oo
 RUN xbps-install -Suy -y \
     ca-certificates \
     curl \
-    openssl \
     && xbps-remove -Oo
 
 WORKDIR /workspace

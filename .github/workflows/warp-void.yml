@@ -1,4 +1,4 @@
-name: WARP Void
+name: WARP Void glibc
 
 on:
   push:

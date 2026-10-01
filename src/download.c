@@ -1,14 +1,42 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <curl/curl.h>
-#include <openssl/evp.h>
 #include "warp.h"
+
+/* ── CA bundle ─────────────────────────────────────────────────
+ * Where the root certificates live differs per system: Debian, Alpine, Arch and
+ * Void use /etc/ssl/certs/ca-certificates.crt, Fedora and Alma /etc/pki/..., macOS
+ * and Alpine/BSD /etc/ssl/cert.pem, Termux $PREFIX/etc/tls/cert.pem. A bundle that
+ * is not there makes every HTTPS request fail, so: an explicit override first, then
+ * the known places, and when none exists libcurl's own default (macOS: the system
+ * trust store) is used. NULL means "do not set CURLOPT_CAINFO". */
+const char *warp_ca_bundle(void) {
+    static const char *cached;
+    static int done;
+    if (done) return cached;
+    done = 1;
+    const char *env[] = { getenv("WARP_CA_BUNDLE"), getenv("SSL_CERT_FILE") };
+    for (int i = 0; i < 2; i++)
+        if (env[i] && *env[i] && access(env[i], R_OK) == 0) return cached = env[i];
+    static const char *known[] = {
+        "/etc/ssl/certs/ca-certificates.crt",                          /* Debian, Ubuntu, Alpine, Arch, Void, K1OS */
+        "/etc/pki/tls/certs/ca-bundle.crt",                            /* Fedora, RHEL, AlmaLinux */
+        "/etc/ssl/ca-bundle.pem",                                      /* openSUSE */
+        "/etc/ssl/cert.pem",                                           /* macOS, Alpine, BSD */
+        "/data/data/com.termux/files/usr/etc/tls/cert.pem",            /* Termux */
+        NULL
+    };
+    for (int i = 0; known[i]; i++)
+        if (access(known[i], R_OK) == 0) return cached = known[i];
+    return cached = NULL;
+}
 
 /* ── write callback: write to file + update sha256 ───────────── */
 typedef struct {
     FILE        *fp;
-    EVP_MD_CTX  *sha_ctx;
+    warp_sha256_t sha_ctx;
     curl_off_t   total;
     curl_off_t   received;
     int          show_progress;
@@ -19,7 +47,7 @@ static size_t write_cb(void *ptr, size_t size, size_t nmemb, void *userdata) {
     size_t bytes = size * nmemb;
 
     if (fwrite(ptr, 1, bytes, st->fp) != bytes) return 0;
-    EVP_DigestUpdate(st->sha_ctx, ptr, bytes);
+    warp_sha256_update(&st->sha_ctx, ptr, bytes);
     return bytes;
 }
 
@@ -51,14 +79,11 @@ int warp_download(const char *url, const char *dest_path, warp_dl_opts_t *opts) 
     FILE *fp = fopen(dest_path, "wb");
     if (!fp) { curl_easy_cleanup(curl); return WARP_ERR_IO; }
 
-    EVP_MD_CTX *sha_ctx = EVP_MD_CTX_new();
-    EVP_DigestInit_ex(sha_ctx, EVP_sha256(), NULL);
-
     dl_state_t st = {
         .fp           = fp,
-        .sha_ctx      = sha_ctx,
         .show_progress = opts ? opts->show_progress : 1,
     };
+    warp_sha256_init(&st.sha_ctx);
 
     curl_easy_setopt(curl, CURLOPT_URL,              url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,    write_cb);
@@ -69,8 +94,7 @@ int warp_download(const char *url, const char *dest_path, warp_dl_opts_t *opts) 
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION,   1L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT,        "warp/" WARP_VERSION);
     curl_easy_setopt(curl, CURLOPT_FAILONERROR,      1L);
-    /* Use K1OS CA certs */
-    curl_easy_setopt(curl, CURLOPT_CAINFO, "/etc/ssl/certs/ca-certificates.crt");
+    if (warp_ca_bundle()) curl_easy_setopt(curl, CURLOPT_CAINFO, warp_ca_bundle());
 
     CURLcode res = curl_easy_perform(curl);
 
@@ -84,15 +108,13 @@ int warp_download(const char *url, const char *dest_path, warp_dl_opts_t *opts) 
 
     /* Finalise SHA256 */
     if (opts) {
-        uint8_t digest[EVP_MAX_MD_SIZE];
-        unsigned int digest_len = 0;
-        EVP_DigestFinal_ex(sha_ctx, digest, &digest_len);
-        for (unsigned int i = 0; i < digest_len; i++)
+        uint8_t digest[32];
+        warp_sha256_final(&st.sha_ctx, digest);
+        for (unsigned int i = 0; i < 32; i++)
             snprintf(opts->computed_sha256 + i*2, 3, "%02x", digest[i]);
-        opts->computed_sha256[digest_len * 2] = '\0';
+        opts->computed_sha256[64] = '\0';
     }
 
-    EVP_MD_CTX_free(sha_ctx);
     fclose(fp);
     curl_easy_cleanup(curl);
 
@@ -149,7 +171,7 @@ char *warp_download_str(const char *url) {
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT,      "warp/" WARP_VERSION);
     curl_easy_setopt(curl, CURLOPT_FAILONERROR,    1L);
-    curl_easy_setopt(curl, CURLOPT_CAINFO, "/etc/ssl/certs/ca-certificates.crt");
+    if (warp_ca_bundle()) curl_easy_setopt(curl, CURLOPT_CAINFO, warp_ca_bundle());
 
     CURLcode res = curl_easy_perform(curl);
     curl_easy_cleanup(curl);

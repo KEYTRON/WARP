@@ -1,3 +1,5 @@
 .git
 warp
-*.o
+**/*.o
+**/*.warp
+pack_temp

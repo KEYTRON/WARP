@@ -8,7 +8,7 @@ manages a versioned local store under `/var/lib/warp` with instant rollback.
 
 ![Tests](https://github.com/KEYTRON/WARP/actions/workflows/warp-tests.yml/badge.svg)
 ![K1OS](https://github.com/KEYTRON/WARP/actions/workflows/warp-k1os.yml/badge.svg)
-![Alpine](https://github.com/KEYTRON/WARP/actions/workflows/warp-alpine.yml/badge.svg) ![AlmaLinux](https://github.com/KEYTRON/WARP/actions/workflows/warp-almalinux.yml/badge.svg) ![Arch](https://github.com/KEYTRON/WARP/actions/workflows/warp-arch.yml/badge.svg) ![Artix](https://github.com/KEYTRON/WARP/actions/workflows/warp-artix.yml/badge.svg) ![Devuan](https://github.com/KEYTRON/WARP/actions/workflows/warp-devuan.yml/badge.svg) ![Fedora](https://github.com/KEYTRON/WARP/actions/workflows/warp-fedora.yml/badge.svg) ![Ubuntu](https://github.com/KEYTRON/WARP/actions/workflows/warp-ubuntu.yml/badge.svg) ![Void](https://github.com/KEYTRON/WARP/actions/workflows/warp-void.yml/badge.svg) ![Void Musl](https://github.com/KEYTRON/WARP/actions/workflows/warp-void-musl.yml/badge.svg)
+![Alpine](https://github.com/KEYTRON/WARP/actions/workflows/warp-alpine.yml/badge.svg) ![AlmaLinux](https://github.com/KEYTRON/WARP/actions/workflows/warp-almalinux.yml/badge.svg) ![Arch](https://github.com/KEYTRON/WARP/actions/workflows/warp-arch.yml/badge.svg) ![Artix](https://github.com/KEYTRON/WARP/actions/workflows/warp-artix.yml/badge.svg) ![Devuan](https://github.com/KEYTRON/WARP/actions/workflows/warp-devuan.yml/badge.svg) ![Fedora](https://github.com/KEYTRON/WARP/actions/workflows/warp-fedora.yml/badge.svg) ![Ubuntu](https://github.com/KEYTRON/WARP/actions/workflows/warp-ubuntu.yml/badge.svg) ![Void glibc](https://github.com/KEYTRON/WARP/actions/workflows/warp-void.yml/badge.svg) ![Void Musl](https://github.com/KEYTRON/WARP/actions/workflows/warp-void-musl.yml/badge.svg)
 
 [View all WARP workflow runs](https://github.com/KEYTRON/WARP/actions) — every
 workflow runs on the self-hosted K1 lab runner.
@@ -304,6 +304,7 @@ is used only for the built-in `k1os`.
 
 ```bash
 sh tests/delta-roundtrip.sh        # delta build/apply, wrong base and truncation rejected
+sh tests/crypto.sh              # SHA-256 and Ed25519: RFC/NIST vectors, forgeries, OpenSSL as the oracle
 sh tests/versions.sh              # versions side by side: install any, switch, pin, rollback chain, run, gc
 sh tests/multi-platform.sh        # one build per OS/CPU in the index; the client takes only its own
 sh tests/node-stats.sh             # node: volunteer limits, one process, counters, opt-in statistics

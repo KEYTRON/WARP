@@ -46,6 +46,9 @@ static void print_help(void) {
         "      add <name> <url> --pubkey <hex> [--mirror <url>]...\n"
         "    keygen     [priv pub]  Generate Ed25519 signing keypair\n"
         "    sign       <file>      Sign a file, writing <file>.sig\n"
+        "    verify     <file> --pubkey <hex>   Check <file>.sig (Ed25519)\n"
+        "    pubkey     <private-key-file>      Print the matching public key\n"
+        "    sha256     <file>...   Print SHA-256 sums (like sha256sum)\n"
         "    pack       <dir>       Create .warp from a directory\n"
         "    delta      <old> <new> <out>   Build a delta between two archives\n"
         "    seed                   Seed installed packages to peers (one node process)\n"
@@ -95,6 +98,9 @@ static const cmd_t commands[] = {
     { "update",   cmd_update   },
     { "keygen",   cmd_keygen   },
     { "sign",     cmd_sign     },
+    { "verify",   cmd_verify   },
+    { "pubkey",   cmd_pubkey   },
+    { "sha256",   cmd_sha256   },
     { "pack",      cmd_pack      },
     { "seed",      cmd_seed      },
     { "volunteer", cmd_volunteer },

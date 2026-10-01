@@ -6,7 +6,7 @@
 #include <sys/types.h>
 
 /* ── version & paths ─────────────────────────────────────────── */
-#define WARP_VERSION     "0.4.4"
+#define WARP_VERSION     "0.4.5"
 #ifndef WARP_STORE_DIR
 #define WARP_STORE_DIR   "/var/lib/warp"
 #endif
@@ -208,9 +208,17 @@ typedef struct {
 } warp_installed_t;
 
 /* ── crypto.h (inline) ───────────────────────────────────────── */
+/* SHA-256 (sha256.c): streaming, no dependencies */
+typedef struct { uint32_t h[8]; uint64_t len; uint8_t buf[64]; size_t n; } warp_sha256_t;
+void warp_sha256_init  (warp_sha256_t *c);
+void warp_sha256_update(warp_sha256_t *c, const void *data, size_t len);
+void warp_sha256_final (warp_sha256_t *c, uint8_t out[32]);
 int  warp_sha256_file(const char *path, char out_hex[WARP_SHA256_HEX]);
 int  warp_sha256_buf(const uint8_t *buf, size_t len, char out_hex[WARP_SHA256_HEX]);
+const char *warp_ca_bundle(void);       /* root certificates, or NULL for libcurl's default */
 int  warp_keygen(const char *privkey_path, const char *pubkey_path);
+int  warp_pubkey_of(const char *privkey_hex_path, uint8_t pub[32]);
+int  warp_random(void *buf, size_t len);
 int  warp_verify_index_sig(const char *data, const char *sig_b64);
 int  warp_verify_sig_with_key(const char *data, const char *sig_b64, const uint8_t pubkey[32]);
 int  warp_ed25519_verify(const uint8_t *msg, size_t msg_len,
@@ -341,6 +349,9 @@ int cmd_info      (int argc, char **argv);
 int cmd_update    (int argc, char **argv);
 int cmd_keygen    (int argc, char **argv);
 int cmd_sign      (int argc, char **argv);
+int cmd_verify    (int argc, char **argv);
+int cmd_pubkey    (int argc, char **argv);
+int cmd_sha256    (int argc, char **argv);
 int cmd_pack      (int argc, char **argv);
 int cmd_seed      (int argc, char **argv);
 int cmd_volunteer (int argc, char **argv);

@@ -9,7 +9,7 @@ index.json when present. <tag> names the platform: the architecture alone for
 Linux (x86_64, aarch64: the names that already exist) and <os>_<arch> for other
 systems (android_aarch64, macos_aarch64); `noarch` is a build for any platform.
 A package built for more than linux-x86_64 gets a `builds` map keyed by
-`<os>-<arch>`; the top level then still describes the linux-x86_64 build, so
+`<os>-<arch>` (plus `-musl` or `-static` for a build that is not for glibc); the top level then still describes the linux-x86_64 build, so
 clients that predate `builds` keep working. Clients install only the build made
 for their own platform. Entries whose archive is missing are dropped — an index must
 never advertise what the mirrors cannot serve. The detached signature
@@ -30,14 +30,23 @@ OSES = ("android", "macos", "freebsd", "openbsd", "netbsd", "windows")
 LEGACY = "linux-x86_64"
 
 
+LIBCS = ("musl", "static")      # glibc is the default and has no suffix: linux-x86_64
+
+
 def platform_of(tag: str) -> str:
-    """Archive tag -> platform: x86_64 -> linux-x86_64, android_aarch64 -> android-aarch64."""
+    """Archive tag -> platform: x86_64 -> linux-x86_64, x86_64_static -> linux-x86_64-static,
+    x86_64_musl -> linux-x86_64-musl, android_aarch64 -> android-aarch64, macos_aarch64 -> macos-aarch64."""
     if tag == "noarch":
         return "any"
+    libc = ""
+    for suffix in LIBCS:
+        if tag.endswith("_" + suffix):
+            tag, libc = tag[: -(len(suffix) + 1)], "-" + suffix
+            break
     for os_name in OSES:
         if tag.startswith(os_name + "_"):
-            return f"{os_name}-{tag[len(os_name) + 1:]}"
-    return f"linux-{tag}"
+            return f"{os_name}-{tag[len(os_name) + 1:]}{libc}"
+    return f"linux-{tag}{libc}"
 
 
 def sha256(path: Path) -> str:
