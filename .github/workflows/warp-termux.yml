@@ -1,40 +1,91 @@
 name: WARP Termux
 
-# Started by hand on purpose: the phone is the user's own, and a runner that
-# wakes on every push would drain the battery while he is away from home. The
-# workflow has no push or pull_request trigger on purpose — only a manual run
-# from the Actions tab, or from the phone with act, when the phone is home and
-# charging.
+# The build runs natively in Termux on the phone: clang, no proot, no glibc.
+# There is deliberately no runner on the phone — the Actions runner is a .NET
+# program and does not run on Android's Bionic libc. Instead this workflow runs
+# on the lab PC, which is already on the tailnet, and drives the phone over SSH.
+#
+# Started by hand on purpose. The phone is the user's own and a runner that woke
+# on every push would drain the battery while he is away from home, so there is
+# no push or pull_request trigger here — only a manual run, ideally when the
+# phone is home and charging.
 on:
   workflow_dispatch:
     inputs:
       full:
-        description: "Also run the slower platform and node tests"
+        description: "Also run the slower multi-platform and node tests"
         type: boolean
         default: false
 
 permissions:
   contents: read
 
+env:
+  TERMUX_HOST: 100.94.147.89
+  TERMUX_PORT: "8022"
+  TERMUX_USER: keytron46
+  TERMUX_DIR: /data/data/com.termux/files/home/warp
+
 jobs:
   build:
-    runs-on: [Android, ARM64, k1termux]
+    runs-on: [self-hosted, k1lab, warp]
     steps:
       - uses: actions/checkout@v4
-      - name: Report the platform
+
+      - name: Set up SSH to the phone
         run: |
-          uname -m
-          echo "PREFIX=$PREFIX"
-          getprop ro.build.version.release 2>/dev/null || true
-      - name: Build
-        run: make -j"$(nproc 2>/dev/null || echo 4)"
-      - name: Platform is android on aarch64
-        run: ./warp --version
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$TERMUX_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$TERMUX_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Report the phone
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
+            'uname -m; getprop ro.product.model; getprop ro.build.version.release; nproc'
+
+      - name: Send the sources
+        run: |
+          tar --exclude=.git -czf /tmp/warp-src.tgz .
+          scp -i ~/.ssh/id_ed25519 -P "$TERMUX_PORT" /tmp/warp-src.tgz "$TERMUX_USER@$TERMUX_HOST:/data/data/com.termux/files/usr/tmp/warp-src.tgz"
+
+      - name: Build natively in Termux
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" "
+            set -e
+            rm -rf \$HOME/warp && mkdir -p \$HOME/warp
+            tar xzf /data/data/com.termux/files/usr/tmp/warp-src.tgz -C \$HOME/warp
+            cd \$HOME/warp
+            make clean >/dev/null 2>&1 || true
+            make -j\$(nproc)
+            ./warp --version
+          "
+
+      - name: The platform is android on aarch64
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
+            "./warp stats --what | grep -o '\"os\":\"[^\"]*\",\"arch\":\"[^\"]*\"' | head -1"
+
       - name: Crypto vectors
-        run: sh tests/crypto.sh
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
+            'cd ~/warp && sh tests/crypto.sh'
+
       - name: Multi-platform
         if: inputs.full
-        run: sh tests/multi-platform.sh
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
+            'cd ~/warp && sh tests/multi-platform.sh'
+
       - name: Node report
         if: inputs.full
-        run: sh tests/node-stats.sh
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
+            'cd ~/warp && sh tests/node-stats.sh'
+
+      - name: Clean up the checkout on the phone
+        if: always()
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -p "$TERMUX_PORT" "$TERMUX_USER@$TERMUX_HOST" \
+            'rm -rf ~/warp /data/data/com.termux/files/usr/tmp/warp-src.tgz' || true
