@@ -43,15 +43,15 @@ serve
 active() { cat "$T/store/active/tool/files/share/ver"; }
 stored() { ls "$T/store/store" | grep -c '^tool-' || true; }
 
-# 1. index: plain key = latest, name@version for every release
+# 1. index: plain key = latest, name@version for every older release
 python3 - "$T/repo/index.json" <<'PY' || fail "index keys"
 import json, sys
 p = json.load(open(sys.argv[1]))["packages"]
-assert sorted(p) == ["tool", "tool@1.0", "tool@1.1", "tool@2.0"], sorted(p)
+assert sorted(p) == ["tool", "tool@1.0", "tool@1.1"], sorted(p)   # the latest is the plain name, no duplicate
 assert p["tool"]["version"] == "2.0" and p["tool@1.0"]["version"] == "1.0"
 PY
 n=$("$W" search tool 2>&1 | plain | grep -c "^  tool ") ; [ "$n" -eq 1 ] || fail "search lists $n entries, expected 1"
-ok "index: latest under the plain name, every release as name@version; search shows one line"
+ok "index: latest under the plain name, older releases as name@version; search shows one line"
 
 # 2. latest, then an older one on purpose: it is pinned
 "$W" install tool >/dev/null 2>&1 || fail "install latest"

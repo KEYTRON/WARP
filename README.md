@@ -124,7 +124,7 @@ without that the next `warp upgrade` would undo it. A pin follows an explicit
 `switch` or `rollback`. `warp rollback` walks back through every activation,
 not just between the last two. Old releases are installable when the
 repository publishes them: `tools/make-index.py --keep-old-versions` adds a
-`name@version` entry for each release next to the plain `name` (the latest);
+`name@version` entry for each older release next to the plain `name` (the latest);
 clients that predate this ignore the extra entries. Not covered yet: different
 programs using different versions of the same *dependency* at once (Nix-style
 closures); see the roadmap.

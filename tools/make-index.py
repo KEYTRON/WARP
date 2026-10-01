@@ -123,7 +123,11 @@ def main() -> int:
         if args.keep_old_versions:
             # Every release also gets a `name@version` entry so it can be installed
             # or pinned later; clients that predate this ignore the extra keys.
+            def is_latest_everywhere(v):      # the plain name already covers it
+                return all(lst[-1][0] == v for lst in platforms.values() if any(t[0] == v for t in lst))
             for v in sorted({v for lst in platforms.values() for v, _, _ in lst}, key=vkey):
+                if is_latest_everywhere(v):
+                    continue
                 selections.append((v, {plat: ([t for t in lst if t[0] == v][0], [])
                                        for plat, lst in platforms.items() if any(t[0] == v for t in lst)}))
 
