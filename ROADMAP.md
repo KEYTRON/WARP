@@ -83,7 +83,7 @@ WARP was started there by accident (0.4.1 built from source and ran); SSH access
 
 ## Documentation in German
 - [x] `README.de.md`, `ROADMAP.de.md` and `docs/NODES.de.md` next to the English and Russian ones
-- [ ] The site offers the German documentation on the project page
+- [x] The site offers the German documentation on the project page
 
 ## Real time on the site
 - [x] The tracker cards (admin page and the public project card) are updated over a WebSocket instead of polling: the tracker pushes a new snapshot when a node announces or reports (polling stays as the fallback while the socket is down)

@@ -85,7 +85,7 @@ WARP wurde dort versehentlich gestartet (0.4.1 aus dem Quelltext gebaut und lief
 
 ## Dokumentation auf Deutsch
 - [x] `README.de.md`, `ROADMAP.de.md` und `docs/NODES.de.md` neben den englischen und russischen
-- [ ] Die Seite zeigt die deutsche Dokumentation auch auf der Projektseite
+- [x] Die Seite zeigt die deutsche Dokumentation auch auf der Projektseite
 
 ## Echtzeit auf der Seite
 - [x] Die Tracker-Karten (Admin-Seite und öffentliche Projektkarte) werden über einen WebSocket aktualisiert statt per Abfrage: Der Tracker schickt einen neuen Schnappschuss, wenn ein Knoten sich anmeldet oder berichtet (die Abfrage bleibt als Rückfall, solange der Socket nicht läuft)
