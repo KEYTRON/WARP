@@ -4,10 +4,13 @@ name: WARP distros
 # keeps only one pending job per concurrency group: ten separate workflows
 # sharing a group would cancel eight of them the moment a push arrived.
 #
-# max-parallel: 2 — the lab PC has about 2.8 GB free and the OrbStack VM 3.9 GB.
-# Twenty distro builds at once would swap both machines to a halt, so the matrix
-# runs two at a time. Each job has its own runner: k1lab-<distro>-x86_64 on the
-# Gentoo lab PC, k1arm-<distro> in the OrbStack machine on the MacBook.
+# Two jobs, one per architecture, each with max-parallel: 1, so exactly two
+# builds run at a time. The lab PC has about 2.8 GB free and the OrbStack VM
+# 3.9 GB; twenty parallel distro builds would swap both machines to a halt.
+#
+# runs-on matches labels, not runner names. The x86_64 runners carry
+# k1lab + warp + the distro label, the arm ones carry aarch64 + the same label,
+# so the distro label alone sends each job to its own pair of runners.
 on:
   push:
   pull_request:
@@ -17,30 +20,49 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: ${{ matrix.distro }} ${{ matrix.arch }}
+  x86_64:
+    name: ${{ matrix.distro }} x86_64
+    runs-on: [self-hosted, k1lab, warp, ${{ matrix.distro }}]
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 1
       matrix:
         distro: [almalinux, alpine, arch, artix, devuan, fedora, ubuntu, void, void-musl, k1os]
-        arch: [x86_64, arm]
-    # runs-on matches labels, not runner names. The x86_64 runners carry
-    # k1lab + the distro label, the arm ones carry aarch64 + the same label, so
-    # the distro label alone sends each job to its own pair of runners.
-    runs-on: [self-hosted, ${{ matrix.arch == 'arm' && 'aarch64' || 'k1lab' }}, ${{ matrix.distro }}]
     steps:
       - uses: actions/checkout@v4
       - name: Report the runner
         run: |
           uname -m
-          echo "distro: ${{ matrix.distro }}, arch: ${{ matrix.arch }}"
+          echo "distro: ${{ matrix.distro }}"
       - name: Build image
         run: docker build -f docker/Dockerfile.${{ matrix.distro }} -t warp:${{ matrix.distro }} .
       - name: Smoke test
         run: |
           docker run --rm warp:${{ matrix.distro }} --version
           docker run --rm warp:${{ matrix.distro }} --help
-      - name: The binary is really for this architecture
+      - name: The binary is really x86_64
+        run: docker run --rm --entrypoint sh warp:${{ matrix.distro }} -c 'uname -m'
+
+  arm:
+    name: ${{ matrix.distro }} arm
+    runs-on: [self-hosted, aarch64, ${{ matrix.distro }}]
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        distro: [almalinux, alpine, arch, artix, devuan, fedora, ubuntu, void, void-musl, k1os]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report the runner
         run: |
-          docker run --rm --entrypoint sh warp:${{ matrix.distro }} -c 'uname -m'
+          uname -m
+          docker info --format 'engine architecture: {{.Architecture}}'
+          echo "distro: ${{ matrix.distro }}"
+      - name: Build image
+        run: docker build -f docker/Dockerfile.${{ matrix.distro }} -t warp:${{ matrix.distro }} .
+      - name: Smoke test
+        run: |
+          docker run --rm warp:${{ matrix.distro }} --version
+          docker run --rm warp:${{ matrix.distro }} --help
+      - name: The binary is really aarch64
+        run: docker run --rm --entrypoint sh warp:${{ matrix.distro }} -c 'uname -m'
