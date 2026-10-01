@@ -80,7 +80,7 @@ Auf Apple Silicon ohne Homebrew geprüft: WARP baut allein mit den Command Line 
 WARP wurde dort versehentlich gestartet (0.4.1 aus dem Quelltext gebaut und lief); ein SSH-Zugang zum Telefon besteht, es lässt sich also direkt testen.
 - [x] Präfixbewusste Pfade: Speicher, Binärdateien und temporäre Dateien unter `$PREFIX` (kein `/var/lib`, kein `/usr/local/bin`, kein Root); das CA-Bündel unter `$PREFIX/etc/tls/cert.pem` (wird seit 0.4.5 gefunden) — erledigt: `$PREFIX/var/lib/warp`, `$PREFIX/bin`, `$PREFIX/tmp`
 - [x] Installer für Termux (ohne `pkg`, fertige `android-aarch64`-Binärdatei) — erledigt: derselbe `tools/install.sh`
-- [ ] Die ersten `android-aarch64`-Pakete (statische Go- und Rust-Binärdateien)
+- [ ] Die ersten `android-aarch64`-Pakete (statische Go- und Rust-Binärdateien) — begonnen: `allan` 0.3.4 für `android-aarch64` (nativ in Termux mit Go gebaut, CGO aus, vom selben Tag wie die anderen Plattformen; die Go-Toolchain für Termux wird ein Paket, sobald warp `pkg` ersetzt)
 - [ ] Ein CI-Runner auf dem Telefon, der von Hand gestartet wird, wenn es zu Hause am Ladegerät ist, damit er unterwegs nicht den Akku leert
 
 ## Dokumentation auf Deutsch

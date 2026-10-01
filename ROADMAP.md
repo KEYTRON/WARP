@@ -78,7 +78,7 @@ Checked on Apple Silicon without Homebrew: WARP builds with the Command Line Too
 WARP was started there by accident (0.4.1 built from source and ran); SSH access to the phone exists, so it can be tested directly.
 - [x] Prefix-aware paths: store, binaries and temporary files under `$PREFIX` (no `/var/lib`, no `/usr/local/bin`, no root); the CA bundle at `$PREFIX/etc/tls/cert.pem` (found since 0.4.5) — done: `$PREFIX/var/lib/warp`, `$PREFIX/bin`, `$PREFIX/tmp`
 - [x] Installer for Termux (`pkg`-free, prebuilt `android-aarch64` binary) — done: the same `tools/install.sh`
-- [ ] The first `android-aarch64` packages (static Go and Rust binaries)
+- [ ] The first `android-aarch64` packages (static Go and Rust binaries) — started: `allan` 0.3.4 for `android-aarch64` (built natively in Termux with Go, CGO off, from the same tag as the other platforms; the Termux Go toolchain will become a package once warp replaces `pkg`)
 - [x] CI on the phone, started by hand when it is at home and charging, so it does not drain the battery away from home. There is deliberately **no runner on the phone**: the Actions runner is a .NET program and does not run on Android's Bionic libc. The `warp-termux.yml` workflow runs on the lab PC (already on the tailnet) and drives the phone over SSH on port 8022; the build itself is native, `make` with clang, no proot and no glibc
 
 ## Documentation in German
