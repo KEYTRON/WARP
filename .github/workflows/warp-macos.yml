@@ -1,0 +1,27 @@
+name: WARP macOS
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: [macOS, ARM64, k1mac]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report the platform
+        run: |
+          sw_vers
+          uname -m
+      - name: Build
+        run: make -j"$(sysctl -n hw.ncpu)"
+      - name: Platform is macOS on arm64
+        run: ./warp --version
+      - name: Crypto vectors
+        run: sh tests/crypto.sh
+      - name: Report what the node would send
+        run: ./warp stats --what || true

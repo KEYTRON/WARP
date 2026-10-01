@@ -1,0 +1,40 @@
+name: WARP Termux
+
+# Started by hand on purpose: the phone is the user's own, and a runner that
+# wakes on every push would drain the battery while he is away from home. The
+# workflow has no push or pull_request trigger on purpose — only a manual run
+# from the Actions tab, or from the phone with act, when the phone is home and
+# charging.
+on:
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "Also run the slower platform and node tests"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: [Android, ARM64, k1termux]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report the platform
+        run: |
+          uname -m
+          echo "PREFIX=$PREFIX"
+          getprop ro.build.version.release 2>/dev/null || true
+      - name: Build
+        run: make -j"$(nproc 2>/dev/null || echo 4)"
+      - name: Platform is android on aarch64
+        run: ./warp --version
+      - name: Crypto vectors
+        run: sh tests/crypto.sh
+      - name: Multi-platform
+        if: inputs.full
+        run: sh tests/multi-platform.sh
+      - name: Node report
+        if: inputs.full
+        run: sh tests/node-stats.sh

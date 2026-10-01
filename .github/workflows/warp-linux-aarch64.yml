@@ -1,0 +1,31 @@
+name: WARP linux aarch64
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: [Linux, aarch64, k1arm]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report the platform
+        run: |
+          uname -m
+          cat /etc/os-release | head -2
+      - name: Build
+        run: make -j"$(nproc)"
+      - name: Platform is linux on aarch64
+        run: ./warp --version
+      - name: Crypto vectors
+        run: sh tests/crypto.sh
+      - name: Versions live side by side
+        run: sh tests/versions.sh
+      - name: Node report
+        run: sh tests/node-stats.sh
+      - name: Multi-platform
+        run: sh tests/multi-platform.sh
