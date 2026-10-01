@@ -38,7 +38,7 @@ mk() { # mk <name> <tag> <marker>
     printf '{"name": "%s", "version": "1.0", "install_bins": []}\n' "$1" > "$d/manifest.json"
     printf '%s\n' "$3" > "$d/files/share/marker"
     head -c 40000 /dev/urandom > "$d/files/share/payload-$2"
-    tar -C "$d" -I 'gzip -n' -cf "$T/repo/$1-1.0-$2.warp" manifest.json files
+    tar -C "$d" -cf - manifest.json files | gzip -n > "$T/repo/$1-1.0-$2.warp"
 }
 mk tool x86_64 linux-x86_64
 mk tool aarch64 linux-aarch64
@@ -150,6 +150,8 @@ assert "builds" not in e and e["sha256"] and e["url"]
 PY
 ok "x86_64-only index stays in the old format"
 
+# (the libc is a Linux notion: macOS has one and WARP_LIBC means nothing there)
+if [ "$(uname -s)" = Linux ]; then
 # 8. the C library: each machine takes its own libc build first, then a static one; musl never takes glibc
 pick() { # pick <libc> <package>: install on the x86_64 client pretending to run on <libc>; prints the marker or "refused"
     "$WX" remove "$2" >/dev/null 2>&1 || true
@@ -174,5 +176,6 @@ assert list(e["builds"]) == ["linux-x86_64-static"], e["builds"]
 assert e["url"].endswith("staticonly-1.0-x86_64_static.warp"), "older clients must still find a build at the top level"
 PY
 ok "libc: own build first, static as the fallback, a musl machine never takes a glibc build"
+fi
 
 echo "PASS: multi-platform"

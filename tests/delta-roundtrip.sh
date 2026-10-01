@@ -7,6 +7,7 @@
 set -eu
 WARP="${WARP:-$(dirname "$0")/../warp}"
 T="$(mktemp -d)"
+fsize() { wc -c < "$1" | tr -d ' '; }      # stat -c is GNU only
 trap 'rm -rf "$T"' EXIT
 
 head -c 6000000 /dev/urandom > "$T/old"
@@ -23,8 +24,8 @@ head -c 6000000 /dev/urandom > "$T/old"
 "$WARP" delta-apply "$T/old" "$T/d" "$T/rebuilt" > /dev/null
 cmp "$T/new" "$T/rebuilt"
 
-new_size=$(stat -c %s "$T/new")
-delta_size=$(stat -c %s "$T/d")
+new_size=$(fsize "$T/new")
+delta_size=$(fsize "$T/d")
 # 112 KiB of genuinely new bytes plus chunk slop; anything under 5% is healthy.
 limit=$((new_size / 20))
 if [ "$delta_size" -gt "$limit" ]; then
@@ -52,6 +53,6 @@ echo "truncated delta rejected"
 
 # Identical files: delta is tiny.
 "$WARP" delta "$T/old" "$T/old" "$T/same" > /dev/null
-[ "$(stat -c %s "$T/same")" -lt 4096 ]
-echo "identical files -> $(stat -c %s "$T/same") byte delta"
+[ "$(fsize "$T/same")" -lt 4096 ]
+echo "identical files -> $(fsize "$T/same") byte delta"
 echo "PASS"

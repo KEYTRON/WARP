@@ -13,7 +13,7 @@ PORT="${PORT:-8765}"
 # E2E_TMPDIR: on the lab runner (itself a container talking to the host's
 # Docker) this must be a path that exists identically on host and runner, or
 # the bind mounts below point at nothing.
-T="$(mktemp -d -p "${E2E_TMPDIR:-${TMPDIR:-/tmp}}")"
+T="$(mktemp -d "${E2E_TMPDIR:-${TMPDIR:-/tmp}}/e2e.XXXXXX")"
 # The store is written by root inside the container; clean it up the same way.
 cleanup() {
     kill $HTTP 2>/dev/null || true
@@ -27,8 +27,7 @@ HTTP=
 mk() { # mk <version> <dir>
     mkdir -p "$2/files/bin"
     printf '{"name": "blob", "version": "%s", "install_bins": ["bin/blob"]}\n' "$1" > "$2/manifest.json"
-    tar -C "$2" --owner=0 --group=0 --numeric-owner --mtime='2026-01-01 00:00:00' \
-        -I 'gzip -n --rsyncable' -cf "$T/repo/blob-$1-x86_64.warp" manifest.json files
+    tar -C "$2" -cf - manifest.json files | gzip -n --rsyncable > "$T/repo/blob-$1-x86_64.warp"
 }
 mkdir -p "$T/repo" "$T/v1/files/bin" "$T/v2/files/bin"
 head -c 2000000 /dev/urandom > "$T/payload"
@@ -71,8 +70,8 @@ echo "installed 1.0 from the custom repo"
 mv "$T/hold.warp" "$T/repo/blob-1.1-x86_64.warp"
 python3 "$HERE/../tools/make-index.py" "$T/repo" --base-url "$BASE" --key "$T/priv.hex" --warp "$WARP" > "$T/index.log"
 grep -q '"deltas"' "$T/repo/index.json" || { echo "index has no deltas"; cat "$T/index.log"; exit 1; }
-delta_size=$(stat -c %s "$T"/repo/blob-1.0-to-1.1-x86_64.warpdelta)
-full_size=$(stat -c %s "$T/repo/blob-1.1-x86_64.warp")
+delta_size=$(wc -c < "$T"/repo/blob-1.0-to-1.1-x86_64.warpdelta | tr -d ' ')
+full_size=$(wc -c < "$T/repo/blob-1.1-x86_64.warp" | tr -d ' ')
 echo "delta $delta_size B vs full $full_size B"
 [ "$delta_size" -lt $((full_size / 4)) ]
 

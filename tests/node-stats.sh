@@ -62,7 +62,7 @@ for n in 1 2 3 4; do
     d="$T/pk$n"; mkdir -p "$d/files/bin"
     printf '{"name": "p%s", "version": "1.0", "install_bins": ["bin/p%s"]}\n' "$n" "$n" > "$d/manifest.json"
     head -c 300000 /dev/urandom > "$d/files/bin/p$n"
-    tar -C "$d" -I 'gzip -n' -cf "$T/repo/p$n-1.0-$TAG.warp" manifest.json files
+    tar -C "$d" -cf - manifest.json files | gzip -n > "$T/repo/p$n-1.0-$TAG.warp"
 done
 "$W" keygen "$T/priv.hex" "$T/pub.hex" >/dev/null
 python3 "$ROOT/tools/make-index.py" "$T/repo" --base-url "http://127.0.0.1:$RP" --key "$T/priv.hex" --warp "$W" >/dev/null
@@ -168,8 +168,8 @@ grep "^/warp/stats" "$T/tracker.log" | head -1 | sed 's#^/warp/stats ##' | pytho
 import json,sys
 d=json.load(sys.stdin)
 assert set(d)=={"node_id","version","os","arch","libc","kernel","distro","distro_version","cpu","cores","ram_gb","volunteer","uploaded_bytes","served","packages"}, sorted(d)
-assert d["libc"] in ("glibc","musl"), d["libc"]
-assert d["os"] == "linux" and d["arch"] in ("x86_64","aarch64"), (d["os"], d["arch"])
+assert d["os"] in ("linux","macos") and d["arch"] in ("x86_64","aarch64"), (d["os"], d["arch"])
+assert d["libc"] in (("glibc","musl") if d["os"] == "linux" else ("",)), d["libc"]
 import re
 assert re.fullmatch(r"\d+\.\d+", d["kernel"]), "kernel must be major.minor only: %r" % d["kernel"]
 assert isinstance(d["cores"], int) and d["cores"] >= 1, d["cores"]

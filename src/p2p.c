@@ -1,3 +1,6 @@
+#if defined(__APPLE__)
+#include <libproc.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -966,12 +969,17 @@ int p2p_node_signal(int sig) {
     free(s);
     if (pid <= 1) return WARP_ERR_NOENT;
 
-    char comm_path[64], comm[64] = "";
+    char comm[64] = "";
+#if defined(__APPLE__)
+    if (proc_name((int)pid, comm, sizeof(comm)) <= 0) return WARP_ERR_NOENT;     /* macOS has no /proc */
+#else
+    char comm_path[64];
     snprintf(comm_path, sizeof(comm_path), "/proc/%ld/comm", pid);
     FILE *f = fopen(comm_path, "r");
     if (!f) return WARP_ERR_NOENT;
     if (fgets(comm, sizeof(comm), f)) comm[strcspn(comm, "\n")] = '\0';
     fclose(f);
+#endif
     if (strcmp(comm, "warp") != 0) return WARP_ERR_NOENT;
 
     if (sig == 0) return kill((pid_t)pid, 0) == 0 ? WARP_OK : WARP_ERR_NOENT;

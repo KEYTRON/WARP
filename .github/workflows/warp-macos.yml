@@ -27,5 +27,13 @@ jobs:
         run: ./warp --version
       - name: Crypto vectors
         run: sh tests/crypto.sh
+      - name: Delta round trip
+        run: sh tests/delta-roundtrip.sh
+      - name: Versions side by side
+        run: sh tests/versions.sh
+      - name: Platforms and libc
+        run: sh tests/multi-platform.sh
+      - name: Node and anonymous statistics
+        run: sh tests/node-stats.sh
       - name: Report what the node would send
         run: ./warp stats --what || true

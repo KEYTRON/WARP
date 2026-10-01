@@ -30,7 +30,7 @@ for v in 1.0 1.1 2.0; do
     printf '#!/bin/sh\necho "tool %s $*"\n' "$v" > "$d/files/bin/warptestver"; chmod +x "$d/files/bin/warptestver"
     printf '%s\n' "$v" > "$d/files/share/ver"
     head -c 200000 /dev/urandom > "$d/files/share/payload"
-    tar -C "$d" -I 'gzip -n' -cf "$T/repo/tool-$v-$TAG.warp" manifest.json files
+    tar -C "$d" -cf - manifest.json files | gzip -n > "$T/repo/tool-$v-$TAG.warp"
 done
 "$W" keygen "$T/priv.hex" "$T/pub.hex" >/dev/null
 serve() { python3 -m http.server "$RP" --bind 127.0.0.1 --directory "$T/repo" >"$T/http.log" 2>&1 & HTTP=$!; sleep 1; }
