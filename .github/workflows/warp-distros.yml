@@ -22,12 +22,32 @@ permissions:
 jobs:
   x86_64:
     name: ${{ matrix.distro }} x86_64
-    runs-on: [self-hosted, k1lab, warp, ${{ matrix.distro }}]
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       max-parallel: 1
       matrix:
-        distro: [almalinux, alpine, arch, artix, devuan, fedora, ubuntu, void, void-musl, k1os]
+        include:
+          - distro: almalinux
+            runner: [self-hosted, k1lab, warp, almalinux]
+          - distro: alpine
+            runner: [self-hosted, k1lab, warp, alpine]
+          - distro: arch
+            runner: [self-hosted, k1lab, warp, arch]
+          - distro: artix
+            runner: [self-hosted, k1lab, warp, artix]
+          - distro: devuan
+            runner: [self-hosted, k1lab, warp, devuan]
+          - distro: fedora
+            runner: [self-hosted, k1lab, warp, fedora]
+          - distro: ubuntu
+            runner: [self-hosted, k1lab, warp, ubuntu]
+          - distro: void
+            runner: [self-hosted, k1lab, warp, void]
+          - distro: void-musl
+            runner: [self-hosted, k1lab, warp, void-musl]
+          - distro: k1os
+            runner: [self-hosted, k1lab, warp, k1os]
     steps:
       - uses: actions/checkout@v4
       - name: Report the runner
@@ -45,12 +65,36 @@ jobs:
 
   arm:
     name: ${{ matrix.distro }} arm
-    runs-on: [self-hosted, aarch64, ${{ matrix.distro }}]
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       max-parallel: 1
       matrix:
-        distro: [almalinux, alpine, arch, artix, devuan, fedora, ubuntu, void, void-musl, k1os]
+        include:
+          - distro: almalinux
+            runner: [self-hosted, aarch64, almalinux]
+          - distro: alpine
+            runner: [self-hosted, aarch64, alpine]
+          - distro: arch
+            runner: [self-hosted, aarch64, arch]
+          - distro: artix
+            runner: [self-hosted, aarch64, artix]
+          - distro: devuan
+            runner: [self-hosted, aarch64, devuan]
+          - distro: fedora
+            runner: [self-hosted, aarch64, fedora]
+          - distro: ubuntu
+            runner: [self-hosted, aarch64, ubuntu]
+          - distro: void
+            runner: [self-hosted, aarch64, void]
+          - distro: void-musl
+            runner: [self-hosted, aarch64, void-musl]
+          - distro: k1os
+            runner: [self-hosted, aarch64, k1os]
+          - distro: void-musl
+            runner: [self-hosted, k1lab, warp, void-musl]
+          - distro: k1os
+            runner: [self-hosted, k1lab, warp, k1os]
     steps:
       - uses: actions/checkout@v4
       - name: Report the runner
