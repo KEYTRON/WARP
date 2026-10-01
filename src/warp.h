@@ -6,7 +6,7 @@
 #include <sys/types.h>
 
 /* ── version & paths ─────────────────────────────────────────── */
-#define WARP_VERSION     "0.4.2"
+#define WARP_VERSION     "0.4.3"
 #ifndef WARP_STORE_DIR
 #define WARP_STORE_DIR   "/var/lib/warp"
 #endif

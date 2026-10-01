@@ -42,10 +42,10 @@ static size_t seedable_packages(void) {
 
 static int build_report(const warp_seed_config_t *cfg, char *buf, size_t sz) {
     return snprintf(buf, sz,
-        "{\"node_id\":\"%s\",\"version\":\"%s\",\"arch\":\"%s\","
+        "{\"node_id\":\"%s\",\"version\":\"%s\",\"os\":\"%s\",\"arch\":\"%s\","
         "\"volunteer\":%s,\"uploaded_bytes\":%llu,\"served\":%llu,"
         "\"packages\":%zu}",
-        cfg->node_id, WARP_VERSION, WARP_ARCH,
+        cfg->node_id, WARP_VERSION, WARP_OS, WARP_ARCH,
         cfg->volunteer ? "true" : "false",
         cfg->uploaded_total, cfg->served_total, seedable_packages());
 }
@@ -62,6 +62,8 @@ void stats_print_disclosure(const warp_seed_config_t *cfg) {
     printf("    %s\n\n", body);
     printf("  node_id          random number made on this machine; not tied to your\n"
            "                   name, hardware or account (new one: warp stats --reset-id)\n");
+    printf("  os, arch         the operating system and CPU architecture warp runs on; they feed\n"
+           "                   the public platform survey (percentages only, like a hardware survey)\n");
     printf("  uploaded_bytes   how much this node has sent to other peers in total\n");
     printf("  served           how many packages it has sent\n");
     printf("  packages         how many packages it can seed\n");

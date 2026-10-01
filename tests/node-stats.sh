@@ -167,7 +167,8 @@ sleep 1
 grep "^/warp/stats" "$T/tracker.log" | head -1 | sed 's#^/warp/stats ##' | python3 -c '
 import json,sys
 d=json.load(sys.stdin)
-assert set(d)=={"node_id","version","arch","volunteer","uploaded_bytes","served","packages"}, sorted(d)
+assert set(d)=={"node_id","version","os","arch","volunteer","uploaded_bytes","served","packages"}, sorted(d)
+assert d["os"] == "linux" and d["arch"] in ("x86_64","aarch64"), (d["os"], d["arch"])
 assert len(d["node_id"])==32' || fail "report fields differ from the disclosure"
 ok "report sent with consent, fields match the disclosure"
 
