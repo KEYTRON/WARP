@@ -1,10 +1,10 @@
 # WARP roadmap
 
-Stage: 0.4.1
+Stage: 0.4.5
 
 Stages go in order: `[x]` is done, `[ ]` is planned. The current stage is the first unfinished one.
 
-Design of repositories and nodes: [docs/NODES.md](docs/NODES.md).
+Design of repositories and nodes: [docs/NODES.md](docs/NODES.md). Also in [Русский](ROADMAP.ru.md) and [Deutsch](ROADMAP.de.md).
 
 ## The base package manager
 - [x] Install, remove, list and inspect packages
@@ -48,7 +48,7 @@ Design of repositories and nodes: [docs/NODES.md](docs/NODES.md).
 ## Other architectures
 All packages are built for x86_64 today, and the architecture exists only in the archive name.
 - [x] Platform in the index (`builds` per `<os>-<arch>`): the client takes only the build for its own OS and CPU and never compiles
-- [ ] Packages and CI for aarch64 (WARP itself builds and passes its tests on linux/aarch64 in an OrbStack machine on the MacBook; a runner and published packages are still to do)
+- [ ] Packages and CI for aarch64 (WARP itself builds and passes its tests on linux/aarch64 in an OrbStack machine on the MacBook; `allan` is published for it; a runner and more packages are still to do)
 - [ ] riscv64 — once there is real hardware to test on
 - [ ] The C library in the platform. glibc, musl (Alpine, Void musl) and bionic (Android) are different ABIs, and Void Linux ships both glibc and musl: today `linux-x86_64` means glibc, so a musl machine would take a build that cannot even start (checked: the dynamic build on Void musl answers "not found"). Decision: the platform learns the C library, detected at run time (the interpreter of `/bin/sh`), not at build time. Builds: `linux-x86_64` (glibc, as before), `linux-x86_64-musl`, and `linux-x86_64-static` for a fully static build that runs on every Linux. The client takes its exact libc first and the static build second; a musl machine never takes a glibc build. Fully static packages (Go, Rust, upstream static builds such as ripgrep, jq, btop) are published once as `static`. WARP itself ships as a static binary (`tools/build-static.sh`: works on Gentoo glibc and Void musl alike). The survey and the site switchers learn the libc too
 - [ ] CI runners for the other platforms (each becomes its own workflow, so the CI block on the site shows it): native macOS (on the MacBook), linux/aarch64 (the OrbStack machine on the MacBook is ready), Termux (none yet; to be started by hand when the phone is at home and charging, so it does not drain the battery away from home)
@@ -82,10 +82,11 @@ WARP was started there by accident (0.4.1 built from source and ran); SSH access
 - [ ] A CI runner on the phone that is started by hand when it is at home and charging, so it does not drain the battery away from home
 
 ## Documentation in German
-- [ ] `README.de.md`, `ROADMAP.de.md` and `docs/NODES.de.md` next to the English and Russian ones; the site then offers German documentation on the project page too
+- [x] `README.de.md`, `ROADMAP.de.md` and `docs/NODES.de.md` next to the English and Russian ones
+- [ ] The site offers the German documentation on the project page
 
 ## Real time on the site
-- [ ] The tracker cards (admin page and the public project card) are updated over a WebSocket instead of polling: the tracker pushes a new snapshot when a node announces or reports
+- [x] The tracker cards (admin page and the public project card) are updated over a WebSocket instead of polling: the tracker pushes a new snapshot when a node announces or reports (polling stays as the fallback while the socket is down)
 
 ## Package automation
 - [ ] A recipe per package in a separate repository: where the version comes from, how to verify it (upstream checksum or signature), how to build it, where the license is

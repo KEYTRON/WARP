@@ -1,6 +1,6 @@
 # WARP
 
-[Русская версия](README.ru.md)
+[Русская версия](README.ru.md) · [Deutsche Version](README.de.md)
 
 WARP is a small package manager written in C for K1OS and a handful of other
 distributions. It downloads signed package archives, verifies them, and
@@ -37,6 +37,11 @@ Ed25519 key you have pinned locally.
 make            # or ./build.sh build
 ```
 
+WARP needs a C compiler, `make` and the libcurl headers, and nothing else: it has no
+OpenSSL dependency (SHA-256 is its own, Ed25519 is the vendored Monocypher in `src/vendor/`).
+On macOS the Command Line Tools are enough. `tools/build-static.sh` builds a fully static
+binary (musl, Docker needed) that runs on glibc and musl systems alike.
+
 ## Install
 
 ```bash
@@ -62,6 +67,9 @@ The binary goes to `/usr/local/bin/warp`; set `PREFIX` for another location.
 | `warp delta-apply <old> <delta> <out>` | Rebuild the new archive from the old one and a delta |
 | `warp keygen [priv pub]` | Generate an Ed25519 signing keypair |
 | `warp sign <file> [priv]` | Write a detached base64 signature `<file>.sig` |
+| `warp verify <file> --pubkey <hex>` | Check `<file>.sig` (Ed25519) against a public key |
+| `warp pubkey <private-key-file>` | Print the public key that belongs to a private key |
+| `warp sha256 <file>...` | Print SHA-256 sums (like `sha256sum`) |
 | `warp pack <dir>` | Create a `.warp` archive from a directory |
 | `warp seed` | Run the node: seed installed packages to peers (P2P transport) |
 | `warp volunteer` | Same node, plus cache rarely seeded packages within your limits |
@@ -148,6 +156,13 @@ packages (scripts, data) are published once as `any`.
 Archives are named `name-version-<arch>.warp` on Linux (x86_64, aarch64) and
 `name-version-<os>_<arch>.warp` elsewhere (`android_aarch64`); `noarch` means
 any platform. `tools/make-index.py` groups them by platform.
+
+Package descriptions come in the user's language when the index has them: an
+entry may carry a `descriptions` map (`{"ru": "...", "de": "..."}`) next to the
+English `description`, and `warp search` / `warp info` pick the text the way
+gettext does (`WARP_LANG`, then the locale, where `C` means English, then
+`LANGUAGE`). `tools/make-index.py` reads the translations from a
+`descriptions.json` in the repository directory.
 
 ## Repositories
 

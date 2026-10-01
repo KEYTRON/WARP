@@ -1,6 +1,6 @@
 # WARP repositories and nodes
 
-Language: English | [Русский](NODES.ru.md)
+Language: English | [Русский](NODES.ru.md) | [Deutsch](NODES.de.md)
 
 **Status: design, not implemented.** Command and field names are provisional.
 
