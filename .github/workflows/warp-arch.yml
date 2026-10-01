@@ -8,6 +8,14 @@ on:
 permissions:
   contents: read
 
+# All distro workflows share one group, so exactly one distro builds at a time
+# and only its two jobs (x86_64 and arm) run in parallel. The lab PC has ~2.8 GB
+# free and the OrbStack VM 3.9 GB, and twenty parallel distro builds would
+# swap both to a halt.
+concurrency:
+  group: warp-distro-builds
+  cancel-in-progress: false
+
 jobs:
   build:
     strategy:
@@ -15,15 +23,8 @@ jobs:
       matrix:
         include:
           - runner: k1lab-arch-x86_64
-            lane: x86_64
           - runner: k1arm-arch
-            lane: arm
     runs-on: ${{ matrix.runner }}
-    # One build per architecture across all distros: the lab PC has ~2.8 GB
-    # free and the OrbStack VM 3.9 GB, so two parallel builds are the limit.
-    concurrency:
-      group: warp-distro-${{ matrix.lane }}
-      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - name: Build image
