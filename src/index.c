@@ -281,7 +281,8 @@ static int parse_repo(warp_repo_t *r, warp_index_t *idx) {
     for (int i = 0; i < pkgs->v.arr.count; i++) {
         json_t *pkg = pkgs->v.arr.items[i];
         if (!pkg || pkg->type != JSON_OBJECT || !pkg->key) continue;
-        if (index_find(idx, pkg->key, NULL) == WARP_OK) continue;   /* earlier repo wins */
+        /* Every repository's entry is kept: a plain name resolves to the earliest repository that has a
+         * build for this platform (index_find), `repo/name` reaches any of them. */
         parse_entry(pkg, r, &idx->entries[idx->count++]);
     }
     json_free(root);
@@ -336,13 +337,18 @@ int index_find(const warp_index_t *idx, const char *name, warp_pkg_entry_t *out)
         ver = at + 1;
         if (!*ver) return WARP_ERR_NOENT;
     }
-    for (int i = 0; i < idx->count; i++) {
-        const warp_pkg_entry_t *e = &idx->entries[i];
-        if (repo[0] && strcmp(e->repo, repo) != 0) continue;
-        if (strcmp(e->name, base) != 0) continue;
-        if (ver ? strcmp(e->version, ver) != 0 : e->versioned) continue;
-        if (out) *out = *e;
-        return WARP_OK;
+    /* First pass: the earliest repository with a build for this machine; second: the earliest
+     * match at all, so the "no build for this platform" message still has an entry to talk about. */
+    for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i < idx->count; i++) {
+            const warp_pkg_entry_t *e = &idx->entries[i];
+            if (repo[0] && strcmp(e->repo, repo) != 0) continue;
+            if (strcmp(e->name, base) != 0) continue;
+            if (ver ? strcmp(e->version, ver) != 0 : e->versioned) continue;
+            if (pass == 0 && e->no_build) continue;
+            if (out) *out = *e;
+            return WARP_OK;
+        }
     }
     return WARP_ERR_NOENT;
 }
@@ -359,6 +365,10 @@ int index_search(const warp_index_t *idx, const char *query,
     for (int i = 0; i < idx->count; i++) {
         const warp_pkg_entry_t *e = &idx->entries[i];
         if (e->versioned) continue;      /* older releases show up in `warp versions` */
+        {   /* a name offered by several repositories is listed once: the one a plain install would pick */
+            warp_pkg_entry_t pick;
+            if (index_find(idx, e->name, &pick) == WARP_OK && strcmp(pick.repo, e->repo) != 0) continue;
+        }
         if (strcasestr(e->name, query) || strcasestr(e->description, query)) {
             (*results)[(*count)++] = *e;
         }

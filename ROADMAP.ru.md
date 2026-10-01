@@ -1,6 +1,6 @@
 # Дорожная карта WARP
 
-Стадия: 0.4.8
+Стадия: 0.4.9
 
 Читайте также: [English](ROADMAP.md), [Deutsch](ROADMAP.de.md).
 

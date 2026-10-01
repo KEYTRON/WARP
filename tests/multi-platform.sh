@@ -178,4 +178,28 @@ PY
 ok "libc: own build first, static as the fallback, a musl machine never takes a glibc build"
 fi
 
+# 9. the same name in two repositories: a plain name takes the first repository that has a build for
+# this machine, `repo/name` reaches either one, and a name is listed once
+RP2=$((RP + 1))
+mkdir -p "$T/repo2" "$T/pk-dup/files/share"
+printf '{"name": "dup", "version": "1.0", "install_bins": []}\n' > "$T/pk-dup/manifest.json"
+printf 'second\n' > "$T/pk-dup/files/share/marker"
+tar -C "$T/pk-dup" -cf - manifest.json files | gzip -n > "$T/repo2/dup-1.0-x86_64.warp"
+mkdir -p "$T/pk-dup1/files/share"; cp "$T/pk-dup/manifest.json" "$T/pk-dup1/"; printf 'first\n' > "$T/pk-dup1/files/share/marker"
+tar -C "$T/pk-dup1" -cf - manifest.json files | gzip -n > "$T/repo/dup-1.0-aarch64.warp"        # first repository: no x86_64 build
+python3 "$ROOT/tools/make-index.py" "$T/repo" --base-url "http://127.0.0.1:$RP" --key "$T/priv.hex" --warp "$WX" >/dev/null
+python3 "$ROOT/tools/make-index.py" "$T/repo2" --base-url "http://127.0.0.1:$RP2" --key "$T/priv.hex" --warp "$WX" >/dev/null
+python3 -m http.server "$RP2" --bind 127.0.0.1 --directory "$T/repo2" >"$T/http2.log" 2>&1 & PIDS="$PIDS $!"
+n=0; until curl -s -o /dev/null "http://127.0.0.1:$RP2/"; do n=$((n+1)); [ "$n" -gt 100 ] && fail "second http server did not start"; sleep 0.2; done
+"$WX" repo add lab2 "http://127.0.0.1:$RP2" --pubkey "$PUB" >/dev/null
+"$WX" update >/dev/null || fail "update with two repositories"
+"$WX" install dup >/dev/null 2>&1 || fail "dup must come from the repository that has an x86_64 build"
+[ "$(marker lx dup)" = "second" ] || fail "plain name took the wrong repository: $(marker lx dup)"
+"$WX" remove dup >/dev/null 2>&1
+"$WX" install lab2/dup >/dev/null 2>&1 || fail "lab2/dup"
+"$WX" remove dup >/dev/null 2>&1
+if "$WX" install lab/dup >/dev/null 2>&1; then fail "lab/dup has no x86_64 build and must be refused"; fi
+[ "$("$WX" search dup 2>&1 | plain | grep -c '^  dup')" = 1 ] || fail "a name offered twice must be listed once"
+ok "same name in two repositories: the one with a build wins, repo/name reaches either, listed once"
+
 echo "PASS: multi-platform"
