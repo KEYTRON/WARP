@@ -91,7 +91,9 @@ fi
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-version="$(curl -fsSL "$BASE/latest" | tr -d ' \n')"
+# each platform may be one release behind (a build machine can be off), so it has its own file
+version="$(curl -fsSL "$BASE/latest-$tag" 2>/dev/null || curl -fsSL "$BASE/latest")"
+version="$(printf '%s' "$version" | tr -d ' \n')"
 [ -n "$version" ] || die "could not read the latest version"
 name="warp-$version-$tag.warp"
 say "  Downloading $name ..."
