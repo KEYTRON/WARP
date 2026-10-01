@@ -50,6 +50,8 @@ All packages are built for x86_64 today, and the architecture exists only in the
 - [x] Platform in the index (`builds` per `<os>-<arch>`): the client takes only the build for its own OS and CPU and never compiles
 - [ ] Packages and CI for aarch64 (WARP itself builds and passes its tests on linux/aarch64 in an OrbStack machine on the MacBook; a runner and published packages are still to do)
 - [ ] riscv64 — once there is real hardware to test on
+- [ ] The C library in the platform: glibc, musl (Alpine, Void musl) and bionic (Android) are different ABIs, and Void Linux ships both glibc and musl. Today `linux-x86_64` means glibc, so a musl machine would pick a glibc build that cannot start. Planned: `-musl` builds next to the glibc ones, `-static` builds that run on any libc, the client takes its exact libc first and a static build second, and the survey and the site switchers learn the libc too
+- [ ] CI runners for the other platforms: native macOS (on the MacBook), linux/aarch64 (the OrbStack machine on the MacBook is ready), Termux (none yet; to be started by hand when the phone is at home and charging, so it does not drain the battery away from home)
 
 ## Versions side by side (idea from the user, 2026-10-01)
 Today several versions already sit in the store (`store/<name>-<hash12>`), but only one `prev` link exists: rollback toggles between two.
