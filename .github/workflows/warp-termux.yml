@@ -51,7 +51,7 @@ jobs:
       - name: Send the sources
         run: |
           tar --exclude=.git -czf /tmp/warp-src.tgz .
-          scp -i ~/.ssh/id_ed25519 -P "$TERMUX_PORT" /tmp/warp-src.tgz "$TERMUX_USER@$TERMUX_HOST:/data/data/com.termux/files/usr/tmp/warp-src.tgz"
+          scp -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -P "$TERMUX_PORT" /tmp/warp-src.tgz "$TERMUX_USER@$TERMUX_HOST:/data/data/com.termux/files/usr/tmp/warp-src.tgz"
 
       - name: Build natively in Termux
         run: |
