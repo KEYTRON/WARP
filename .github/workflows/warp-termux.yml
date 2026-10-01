@@ -34,6 +34,10 @@ jobs:
 
       - name: Set up SSH to the phone
         run: |
+          # The runner image has no ssh client; this job needs one.
+          if ! command -v ssh >/dev/null; then
+            apt-get update -qq && apt-get install -y -qq --no-install-recommends openssh-client
+          fi
           install -m 700 -d ~/.ssh
           printf '%s\n' "$TERMUX_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
