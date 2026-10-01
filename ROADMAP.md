@@ -70,7 +70,7 @@ Checked on Apple Silicon without Homebrew: WARP builds with the Command Line Too
 - [x] An installer: one command that explains what it does, waits for Enter, fetches the prebuilt `macos-aarch64` binary and shows the pinned key fingerprint to compare with the site; a `.pkg` for managed installs later — done: `tools/install.sh` (also for Linux and Termux); warp itself fetches the signed index afterwards
 - [x] System facts for the survey on macOS (`sysctl`: OS version, CPU, cores, memory) — done
 - [x] The first packages built for `macos-aarch64` (ripgrep and jq from the upstream releases; btop publishes no macOS build) and published with a `builds` entry — done
-- [ ] Portable tests (no GNU-only `tar -I`, `timeout`, `stat -c`)
+- [x] Portable tests (no GNU-only `tar -I`, `timeout`, `stat -c`): they pass on native macOS and the macOS job runs them (the Docker-based end-to-end test stays on Linux)
 - [x] Two CI runners on the MacBook: the native macOS one builds with `make` on Apple Silicon and runs the crypto vectors, the linux/aarch64 one lives in the OrbStack machine and builds the distro images. Docker for the arm builds is installed inside that machine; OrbStack on the MacBook itself is the engine for the native runner
 - [ ] Longer term: replace Homebrew on this machine with WARP (the repository becomes the base repository)
 
