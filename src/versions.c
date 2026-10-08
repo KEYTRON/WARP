@@ -80,6 +80,7 @@ int cmd_versions(int argc, char **argv) {
 int cmd_switch(int argc, char **argv) {
     if (argc < 2) { warp_err("Usage: warp switch <package> <version>"); return 1; }
     if (store_switch(argv[0], argv[1]) != WARP_OK) return 1;
+    deps_warn_active(argv[0]);
     warp_ok("%s: now using %s", argv[0], argv[1]);
     char pin[WARP_MAX_NAME];
     if (store_pin_get(argv[0], pin, sizeof(pin)))

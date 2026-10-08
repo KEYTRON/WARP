@@ -1,6 +1,6 @@
 # WARP roadmap
 
-Stage: 0.4.10
+Stage: 0.4.11
 
 Stages go in order: `[x]` is done, `[ ]` is planned. The current stage is the first unfinished one.
 
@@ -101,8 +101,8 @@ Any desktop environment (DDE first, then others) installed from a WARP repositor
 - [x] System links: `install_links` in the manifest put session files, D-Bus services, polkit, PAM and init scripts in place for the active version; they follow upgrade/switch/rollback, `remove` takes them away, `warp links` lists them; never over a file WARP did not create, only under integration directories
 - [x] Triggers by name only (`ldconfig`, `glib-schemas`, `desktop-database`, `icon-cache`, `mime-database`, `dbus-reload`), commands compiled in
 - [x] Dependency resolution on top of the signed index: missing ones installed, others moved to the wanted version unless pinned, cycles stopped; `make-index.py` takes `deps` from the archive manifests
-- [ ] Reverse dependencies: `remove` and `upgrade` warn about (or refuse) breaking a package that needs the exact version
-- [ ] System users and groups for display managers and daemons (sysusers-style, declared in the manifest)
+- [x] Reverse dependencies: `remove` and `upgrade` warn about (or refuse) breaking a package that needs the exact version
+- [x] System users and groups for display managers and daemons (sysusers-style, declared in the manifest)
 - [ ] Build recipes for DDE (dtk6*, dde-shell, dde-session, dde-control-center, dde-daemon, ddm, treeland, ...) and publishing to `keytron`
 - [ ] Next desktop environments after DDE
 

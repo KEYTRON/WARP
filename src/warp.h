@@ -6,7 +6,7 @@
 #include <sys/types.h>
 
 /* ── version & paths ─────────────────────────────────────────── */
-#define WARP_VERSION     "0.4.10"
+#define WARP_VERSION     "0.4.11"
 /* Where things live. Linux: /var/lib/warp and /usr/local/bin (root). macOS: a prefix owned by the
  * user, /opt/warp (like Homebrew's), so nothing is installed by root afterwards and `warp shellenv`
  * puts /opt/warp/bin on the PATH. Termux: under $PREFIX, there is no root and no /tmp there. */
@@ -348,6 +348,20 @@ void store_free_list(warp_installed_t *list, int count);
 unsigned links_clear(const char *name);
 unsigned links_apply(const char *name, const char *store_pkg, int *failed);
 void     links_run_triggers(unsigned mask);
+
+/* reverse dependencies (deps.c) */
+typedef struct {
+    char pkg[WARP_MAX_NAME];           /* the active package that depends */
+    char pkg_version[WARP_MAX_NAME];
+    char wants[WARP_MAX_NAME];         /* the exact version it needs, "" = any */
+} warp_dependent_t;
+void store_write_deps(const char *name, const char *hash12, const warp_pkg_entry_t *e);
+int  store_dependents(const char *name, const char *except, warp_dependent_t *out, int max);
+int  deps_blockers(const char *name, const char *version, const char *except, const char *what);
+void deps_warn_active(const char *name);
+
+/* system users and groups (users.c) */
+int  users_apply(const char *name, const json_t *manifest);
 
 /* ── index.h (inline) ────────────────────────────────────────── */
 int  index_load(warp_index_t *idx, int force_refresh);

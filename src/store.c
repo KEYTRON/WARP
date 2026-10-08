@@ -280,6 +280,8 @@ static int activate_impl(const char *name, const char *hash12, int push) {
             json_t *jm = json_parse(manifest_str);
             free(manifest_str);
             if (jm) {
+                int uf = users_apply(name, jm);
+                if (uf) warp_warn("%s: %d system user/group(s) not created (see above)", name, uf);
                 json_t *bins = json_get(jm, "install_bins");
                 if (bins && bins->type == JSON_ARRAY) {
                     for (int i = 0; i < bins->v.arr.count; i++) {

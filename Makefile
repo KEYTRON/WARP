@@ -11,6 +11,8 @@ SRCS    = $(SRC_DIR)/main.c \
           $(SRC_DIR)/download.c \
           $(SRC_DIR)/store.c \
           $(SRC_DIR)/links.c \
+          $(SRC_DIR)/deps.c \
+          $(SRC_DIR)/users.c \
           $(SRC_DIR)/index.c \
           $(SRC_DIR)/platform.c \
           $(SRC_DIR)/commands.c \

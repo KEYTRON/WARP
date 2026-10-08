@@ -31,7 +31,7 @@ static void print_help(void) {
         "  " WARP_BOLD "Commands:" WARP_RESET "\n"
         "    install    <pkg>[@ver] Install a package (or one specific version)\n"
         "    upgrade    [pkg...]    Upgrade installed packages (delta when available)\n"
-        "    remove     <pkg>       Remove a package\n"
+        "    remove     <pkg> [--force]  Remove a package (refused while another needs it)\n"
         "    list                   List installed packages\n"
         "    search     <query>     Search available packages\n"
         "    rollback   <pkg>       Go one version back (repeat to go further)\n"

@@ -1,6 +1,6 @@
 # WARP-Roadmap
 
-Stand: 0.4.10
+Stand: 0.4.11
 
 Auch auf [English](ROADMAP.md) und [Русский](ROADMAP.ru.md).
 
@@ -103,8 +103,8 @@ Jede Desktop-Umgebung (zuerst DDE, dann weitere) aus einem WARP-Repository insta
 - [x] Systemlinks: `install_links` im Manifest legen Sitzungsdateien, D-Bus-Dienste, polkit, PAM und Init-Skripte für die aktive Version an; sie folgen upgrade/switch/rollback, `remove` entfernt sie, `warp links` listet sie; nie über eine Datei, die WARP nicht angelegt hat, nur in Integrationsverzeichnisse
 - [x] Trigger nur per Name (`ldconfig`, `glib-schemas`, `desktop-database`, `icon-cache`, `mime-database`, `dbus-reload`), Befehle einkompiliert
 - [x] Abhängigkeitsauflösung auf dem signierten Index: fehlende werden installiert, andere auf die gewünschte Version umgestellt, außer sie sind festgelegt, Zyklen werden gestoppt; `make-index.py` übernimmt `deps` aus den Archiv-Manifesten
-- [ ] Umgekehrte Abhängigkeiten: `remove` und `upgrade` warnen (oder verweigern), wenn sie ein Paket brechen, das die genaue Version braucht
-- [ ] Systembenutzer und -gruppen für Display-Manager und Dienste (im Stil von sysusers, im Manifest deklariert)
+- [x] Umgekehrte Abhängigkeiten: `remove` und `upgrade` warnen (oder verweigern), wenn sie ein Paket brechen, das die genaue Version braucht
+- [x] Systembenutzer und -gruppen für Display-Manager und Dienste (im Stil von sysusers, im Manifest deklariert)
 - [ ] Bau-Rezepte für DDE (dtk6*, dde-shell, dde-session, dde-control-center, dde-daemon, ddm, treeland, ...) und Veröffentlichung in `keytron`
 - [ ] Weitere Desktop-Umgebungen nach DDE
 

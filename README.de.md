@@ -73,7 +73,7 @@ unter macOS (einmal per `sudo` zu Ihrem gemacht, danach braucht nichts mehr Root
 | `warp search <Suchbegriff>` | Verfügbare Pakete durchsuchen |
 | `warp install <Paket>` | Ein Paket installieren (`repo/paket`, um ein Repository ausdrücklich zu wählen) |
 | `warp upgrade [Paket...]` | Installierte Pakete aktualisieren, per Delta, wenn eines veröffentlicht ist |
-| `warp remove <Paket>` | Ein Paket entfernen |
+| `warp remove <Paket> [--force]` | Ein Paket entfernen |
 | `warp rollback <Paket>` | Eine Version zurück durch den Aktivierungsverlauf (wiederholen für weiter zurück) |
 | `warp versions` / `switch` / `pin` / `unpin` / `run` / `gc` | Versionen nebeneinander, siehe unten |
 | `warp links [pkg]` | Dateien, die die aktiven Versionen ins System verlinkt haben (siehe Systemlinks) |
@@ -293,6 +293,14 @@ WARP und behält die Festlegung). Eine fehlende Abhängigkeit oder ein Zyklus br
 Installation ab. `tools/make-index.py` übernimmt `deps` aus dem `manifest.json` jedes
 Archivs, der Herausgeber schreibt sie also einmal, neben die Dateien.
 
+Jede installierte Version behält die Abhängigkeiten, mit denen sie installiert wurde, WARP
+weiß also auch, wer was braucht. `warp remove` verweigert ein Paket, das ein aktives braucht,
+und nennt diese (`--force` bricht sie absichtlich). `warp upgrade` hält ein Paket zurück,
+solange ein aktives Paket seine aktuelle genaue Version braucht; das abhängige kann im selben
+Lauf aktualisiert werden und es mitnehmen, sonst wird es als zurückgehalten gemeldet, was
+kein Fehler ist. `warp switch` und `warp rollback` warnen, wenn sie ein abhängiges Paket auf
+der falschen Version lassen.
+
 ## Systemlinks (Desktop-Umgebungen, Dienste)
 
 Programme kommen über `install_bins` in den `PATH`. Eine Desktop-Umgebung oder
@@ -332,6 +340,22 @@ entfernt sie; `warp links [pkg]` listet sie.
 Die Bibliotheken eines Pakets bleiben in seinem Store-Eintrag; ein Programm findet
 sie über einen RPATH auf das stabile `/var/lib/warp/active/<pkg>/files/lib`, ein
 Versionswechsel der Bibliothek braucht also kein Neulinken.
+
+### Systembenutzer und -gruppen
+
+Ein Display-Manager oder Dienst deklariert seine Konten im Stil von sysusers:
+
+```json
+"groups": ["ddm"],
+"users": [{"name": "ddm", "group": "ddm", "groups": ["video"], "home": "/var/lib/ddm",
+           "shell": "/sbin/nologin", "comment": "DDM greeter", "create_home": true}]
+```
+
+Sie werden als Systemkonten angelegt (`groupadd -r`, `useradd -r` mit Argumentliste, nie
+über eine Shell), wenn eine Version aktiv wird und sie noch fehlen. Vorhandene Konten werden
+nie geändert und bei `remove` nicht gelöscht: Dateien dieser uid überleben das Paket. Namen,
+Pfade und Kommentar werden vorher geprüft; eine fehlende Zusatzgruppe wird mit Warnung
+weggelassen. Nur Linux, braucht root.
 
 ## Indexformat
 

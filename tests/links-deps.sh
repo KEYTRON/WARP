@@ -6,6 +6,8 @@
 # directories is refused, remove takes the links away. Dependencies come from
 # the archive manifests through make-index.py into the signed index and are
 # installed (or moved to the wanted version) first; a cycle stops cleanly.
+# Reverse dependencies: remove refuses, upgrade holds back, switch warns.
+# System users and groups from the manifest are validated before creation.
 # Isolated store and system root, local repo.
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -45,6 +47,12 @@ pkg de 2.0 ', "deps": [{"name": "lib", "version": "2.0"}], "install_links": ["sh
     share/xsessions/de.desktop lib/de/de.initd
 pkg cyca 1.0 ', "deps": [{"name": "cycb", "version": "1.0"}]' share/a
 pkg cycb 1.0 ', "deps": [{"name": "cyca", "version": "1.0"}]' share/b
+pkg core 1.0 '' share/core
+pkg core 2.0 '' share/core
+pkg shell 1.0 ', "deps": [{"name": "core", "version": "1.0"}]' share/shell
+pkg shell 2.0 ', "deps": [{"name": "core", "version": "2.0"}]' share/shell
+pkg panel 1.0 ', "deps": [{"name": "core", "version": "1.0"}]' share/panel
+pkg dm 1.0 ', "groups": ["dmgrp", {"name": "seat"}], "users": [{"name": "dm", "group": "dmgrp", "groups": ["video"], "home": "/var/lib/dm", "shell": "/sbin/nologin", "comment": "DM greeter"}, {"name": "Bad;rm", "home": "/x"}, {"name": "evil", "home": "/var/../etc", "shell": "/bin/sh"}, {"name": "colon", "comment": "a:b"}]' share/dm
 pkg lonely 1.0 ', "deps": [{"name": "ghost", "version": "9.9"}]' share/l
 
 "$W" keygen "$T/priv.hex" "$T/pub.hex" >/dev/null
@@ -122,5 +130,45 @@ echo "$out" | grep -q "ghost" || fail "missing dependency not named: $out"
 if "$W" install cyca >"$T/out" 2>&1; then fail "a cycle must fail"; fi; out=$(plain < "$T/out")
 echo "$out" | grep -q "cycle" || fail "cycle not reported: $out"
 ok "missing dependency and dependency cycle are refused"
+
+# 9. reverse dependencies: remove refuses, upgrade holds back, switch warns
+"$W" install shell@1.0 >/dev/null 2>&1 || fail "install shell@1.0"
+"$W" unpin shell >/dev/null
+"$W" install panel >/dev/null 2>&1 || fail "install panel"
+corever() { cat "$T/store/active/core/files/share/core" | cut -d' ' -f2; }
+[ "$(corever)" = "1.0" ] || fail "core 1.0 expected"
+if "$W" remove core >"$T/out" 2>&1; then fail "remove of a needed package must be refused"; fi
+grep -q "shell 1.0 needs core 1.0" "$T/out" && grep -q "panel 1.0 needs core 1.0" "$T/out" || fail "remove does not name the dependents: $(cat "$T/out")"
+[ -e "$T/store/active/core" ] || fail "core removed anyway"
+ok "remove refuses a package that active ones need, and names them"
+
+"$W" upgrade >"$T/out" 2>&1 || fail "upgrade with a held package must not fail: $(cat "$T/out")"
+[ "$(corever)" = "1.0" ] || fail "core moved although panel needs 1.0"
+[ "$(cat "$T/store/active/shell/files/share/shell" | cut -d' ' -f2)" = "1.0" ] || fail "shell 2.0 needs core 2.0 and must wait"
+plain < "$T/out" | grep -q "held back" || fail "no held-back report: $(cat "$T/out")"
+plain < "$T/out" | grep -q "panel 1.0 needs core 1.0" || fail "upgrade does not say who holds core: $(cat "$T/out")"
+ok "upgrade holds back core and shell while panel needs core 1.0"
+
+"$W" remove panel >/dev/null 2>&1 || fail "remove panel"
+"$W" upgrade >"$T/out" 2>&1 || fail "upgrade after panel is gone: $(cat "$T/out")"
+[ "$(corever)" = "2.0" ] && [ "$(cut -d' ' -f2 "$T/store/active/shell/files/share/shell")" = "2.0" ] || fail "shell and core should both reach 2.0: $(cat "$T/out")"
+ok "without panel, upgrade moves shell to 2.0 and core along with it"
+
+"$W" switch core 1.0 >"$T/out" 2>&1 || fail "switch core 1.0"
+plain < "$T/out" | grep -q "shell 2.0 needs core 2.0, now 1.0 is active" || fail "switch does not warn: $(cat "$T/out")"
+"$W" switch core 2.0 >/dev/null 2>&1
+"$W" remove core --force >"$T/out" 2>&1 || fail "remove --force"
+[ ! -e "$T/store/active/core" ] || fail "--force did not remove"
+ok "switch warns about a dependent left on the wrong version; remove --force overrides"
+
+# 10. system users and groups: declared, checked, created (here only announced: scratch root)
+"$W" install dm >"$T/out" 2>&1 || true
+o=$(plain < "$T/out")
+for m in "Group dmgrp would be created" "Group seat would be created" "User dm would be created" \
+         "bad user name 'Bad;rm'" "bad home or shell for user evil" "bad comment for user colon" "3 system user/group(s) not created"; do
+    echo "$o" | grep -q "$m" || fail "users: missing '$m' in: $o"
+done
+[ -e "$T/store/active/dm" ] || fail "dm should still be installed"
+ok "users/groups: valid ones created (announced in a scratch root), bad names, paths and comments refused"
 
 echo "all links/deps tests passed"

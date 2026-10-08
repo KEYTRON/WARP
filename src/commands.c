@@ -175,6 +175,7 @@ static int install_archive(const warp_pkg_entry_t *entry, const char *tmp_path) 
         return WARP_ERR_IO;
     }
     remove(tmp_path);
+    store_write_deps(entry->name, hash12, entry);
 
     if (store_activate(entry->name, hash12) != WARP_OK) {
         warp_err("Failed to activate package");
@@ -260,11 +261,20 @@ static int install_deps(const warp_index_t *idx, const warp_pkg_entry_t *entry) 
                      d->repo[0] ? d->repo : entry->repo);
             return WARP_ERR_NOENT;
         }
-        if (have) warp_info("%s needs %s %s (active: %s)", entry->name, d->name, dep.version, inst.version);
-        else      warp_info("%s needs %s %s", entry->name, d->name, dep.version);
-        if (install_entry(idx, &dep, have ? &inst : NULL) != WARP_OK) {
+        if (have) {
+            /* Moving it would break whoever needs the version that is active now. */
+            char what[3 * WARP_MAX_NAME + 64];
+            snprintf(what, sizeof(what), "%s needs %s %s, but %s %s is needed as it is by:",
+                     entry->name, d->name, dep.version, d->name, inst.version);
+            if (deps_blockers(d->name, dep.version, entry->name, what) > 0) return WARP_ERR_EXIST;
+            warp_info("%s needs %s %s (active: %s)", entry->name, d->name, dep.version, inst.version);
+        } else {
+            warp_info("%s needs %s %s", entry->name, d->name, dep.version);
+        }
+        int rc = install_entry(idx, &dep, have ? &inst : NULL);
+        if (rc != WARP_OK) {
             warp_err("Dependency %s %s failed: not installing %s", d->name, dep.version, entry->name);
-            return WARP_ERR_IO;
+            return rc == WARP_ERR_EXIST ? rc : WARP_ERR_IO;
         }
     }
     return WARP_OK;
@@ -427,44 +437,79 @@ int cmd_upgrade(int argc, char **argv) {
         return 1;
     }
 
-    int failed = 0, upgraded = 0, checked = 0;
-    for (int i = 0; i < count; i++) {
-        if (argc > 0) {
-            int wanted = 0;
-            for (int a = 0; a < argc; a++) if (strcmp(argv[a], list[i].name) == 0) wanted = 1;
-            if (!wanted) continue;
+    /* A package that an active one needs at its current exact version waits:
+     * the dependent may be upgraded in this run and ask for the new version
+     * itself (moving the dependency along). Passes repeat while they make
+     * progress; whatever still waits is kept and the reason printed. */
+    int failed = 0, upgraded = 0, checked = 0, held = 0;
+    char *state = calloc((size_t)count, 1);        /* 0 = to look at, 1 = done, 2 = waiting */
+    for (int pass = 0, progress = 1; progress; pass++) {
+        progress = 0;
+        for (int i = 0; i < count; i++) {
+            if (state[i] == 1) continue;
+            if (argc > 0) {
+                int wanted = 0;
+                for (int a = 0; a < argc; a++) if (strcmp(argv[a], list[i].name) == 0) wanted = 1;
+                if (!wanted) { state[i] = 1; continue; }
+            }
+            if (pass == 0) checked++;
+            char pin[WARP_MAX_NAME];
+            if (store_pin_get(list[i].name, pin, sizeof(pin))) {
+                printf("  %-20s pinned at %s, left alone ('warp unpin %s' to release)\n", list[i].name, pin, list[i].name);
+                state[i] = 1;
+                continue;
+            }
+            warp_pkg_entry_t entry;
+            if (index_find(&idx, list[i].name, &entry) != WARP_OK) {
+                warp_warn("%s: not in any repository, skipping", list[i].name);
+                state[i] = 1;
+                continue;
+            }
+            if (entry.no_build) {
+                warp_warn("%s: no build for %s in the index, keeping %s", list[i].name, warp_platform(), list[i].version);
+                state[i] = 1;
+                continue;
+            }
+            /* The active version may have moved since the list was read (a dependency of an earlier upgrade). */
+            warp_installed_t cur = list[i];
+            store_is_installed(cur.name, &cur);
+            char have[WARP_SHA256_HEX] = "";
+            installed_sha(&cur, have);
+            if (strcmp(have, entry.sha256) == 0) {
+                if (state[i] == 0) printf("  %-20s %s is up to date\n", list[i].name, entry.version);
+                if (state[i] == 2) { upgraded++; progress = 1; }
+                state[i] = 1;
+                continue;
+            }
+            if (deps_blockers(cur.name, entry.version, NULL, NULL) > 0) { state[i] = 2; continue; }
+            printf("  %-20s %s -> %s\n", list[i].name, list[i].version, entry.version);
+            int rc = install_entry(&idx, &entry, &cur);
+            if (rc == WARP_ERR_EXIST) { state[i] = 2; continue; }
+            if (rc == WARP_OK) upgraded++; else failed++;
+            state[i] = 1;
+            progress = 1;
         }
-        checked++;
-        char pin[WARP_MAX_NAME];
-        if (store_pin_get(list[i].name, pin, sizeof(pin))) {
-            printf("  %-20s pinned at %s, left alone ('warp unpin %s' to release)\n", list[i].name, pin, list[i].name);
-            continue;
-        }
-        warp_pkg_entry_t entry;
-        if (index_find(&idx, list[i].name, &entry) != WARP_OK) {
-            warp_warn("%s: not in any repository, skipping", list[i].name);
-            continue;
-        }
-        if (entry.no_build) {
-            warp_warn("%s: no build for %s in the index, keeping %s", list[i].name, warp_platform(), list[i].version);
-            continue;
-        }
-        char have[WARP_SHA256_HEX] = "";
-        installed_sha(&list[i], have);
-        if (strcmp(have, entry.sha256) == 0) {
-            printf("  %-20s %s is up to date\n", list[i].name, list[i].version);
-            continue;
-        }
-        printf("  %-20s %s -> %s\n", list[i].name, list[i].version, entry.version);
-        if (install_entry(&idx, &entry, &list[i]) == WARP_OK) upgraded++; else failed++;
     }
+    for (int i = 0; i < count; i++) {
+        if (state[i] != 2) continue;
+        warp_pkg_entry_t entry;
+        index_find(&idx, list[i].name, &entry);
+        char what[3 * WARP_MAX_NAME + 64];
+        snprintf(what, sizeof(what), "%s: kept at %s, %s is published, but it is needed as it is by:",
+                 list[i].name, list[i].version, entry.version);
+        if (deps_blockers(list[i].name, entry.version, NULL, what) == 0)
+            warp_err("%s: kept at %s (its dependencies conflict, see above)", list[i].name, list[i].version);
+        held++;
+    }
+    free(state);
     if (argc > 0 && checked == 0)
         warp_warn("None of the named packages are installed");
 
     index_free(&idx);
     store_free_list(list, count);
-    if (upgraded || failed)
+    if (upgraded || failed || held)
         printf("\n  %d upgraded, %d failed\n\n", upgraded, failed);
+    if (held) printf("  %d held back by the packages that need them\n\n", held);
     return failed ? 1 : 0;
 }
 
@@ -586,12 +631,27 @@ int cmd_repo(int argc, char **argv) {
 
 /* ── warp remove <pkg> ───────────────────────────────────────── */
 int cmd_remove(int argc, char **argv) {
-    if (argc < 1) { warp_err("Usage: warp remove <package>"); return 1; }
-    const char *name = argv[0];
+    const char *name = NULL;
+    int force = 0;
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "--force") == 0) force = 1;
+        else if (!name) name = argv[i];
+    }
+    if (!name) { warp_err("Usage: warp remove <package> [--force]"); return 1; }
 
     if (!store_is_installed(name, NULL)) {
         warp_err("Not installed: %s", name);
         return 1;
+    }
+
+    char what[WARP_MAX_NAME + 64];
+    snprintf(what, sizeof(what), "%s is needed by:", name);
+    if (deps_blockers(name, NULL, NULL, force ? NULL : what) > 0) {
+        if (!force) {
+            warp_err("Not removed. Remove those first, or 'warp remove %s --force' to break them", name);
+            return 1;
+        }
+        warp_warn("Removing %s although other packages need it (--force)", name);
     }
 
     if (store_remove(name) != WARP_OK) return 1;
@@ -677,6 +737,7 @@ int cmd_rollback(int argc, char **argv) {
     const char *name = argv[0];
 
     if (store_rollback(name) != WARP_OK) return 1;
+    deps_warn_active(name);
     warp_ok("Rolled back: %s", name);
     return 0;
 }

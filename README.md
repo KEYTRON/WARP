@@ -71,7 +71,7 @@ add `eval "$(warp shellenv)"` to the shell profile), `$PREFIX` in Termux (no roo
 | `warp search <query>` | Search available packages |
 | `warp install <pkg>` | Install a package (`repo/pkg` to pick a repository explicitly) |
 | `warp upgrade [pkg...]` | Upgrade installed packages, via delta when one is published |
-| `warp remove <pkg>` | Remove a package |
+| `warp remove <pkg> [--force]` | Remove a package |
 | `warp rollback <pkg>` | Go one version back through the activation history (repeat for more) |
 | `warp versions` / `switch` / `pin` / `unpin` / `run` / `gc` | Versions side by side, see below |
 | `warp links [pkg]` | Files the active versions linked into the system (see System links) |
@@ -290,6 +290,14 @@ is pinned (then WARP warns and keeps the pin). A missing dependency or a cycle
 stops the install. `tools/make-index.py` takes `deps` from each archive's
 `manifest.json`, so a publisher writes them once, next to the files.
 
+Each installed version keeps the dependencies it was installed with, so WARP
+also knows who needs what. `warp remove` refuses a package an active one
+needs and names them (`--force` breaks them on purpose). `warp upgrade` holds
+a package back while an active package needs its current exact version; the
+dependent may be upgraded in the same run and move it along, otherwise it is
+reported as held back, which is not a failure. `warp switch` and `warp
+rollback` warn when they leave a dependent on the wrong version.
+
 ## System links (desktop environments, daemons)
 
 Programs reach the `PATH` through `install_bins`. A desktop environment or a
@@ -328,6 +336,23 @@ takes them away; `warp links [pkg]` lists them.
 Libraries of a package stay in its store entry; a binary finds them through an
 RPATH to the stable `/var/lib/warp/active/<pkg>/files/lib`, so switching a
 library's version needs no relinking.
+
+### System users and groups
+
+A display manager or a daemon declares its accounts, sysusers-style:
+
+```json
+"groups": ["ddm"],
+"users": [{"name": "ddm", "group": "ddm", "groups": ["video"], "home": "/var/lib/ddm",
+           "shell": "/sbin/nologin", "comment": "DDM greeter", "create_home": true}]
+```
+
+They are created as system accounts (`groupadd -r`, `useradd -r`, run with an
+argument list, never through a shell) when a version becomes active and they do
+not exist yet. Existing accounts are never changed, and none are deleted on
+`remove`: files owned by the uid outlive the package. Names, paths and the
+comment are checked first; a supplementary group that does not exist is left
+out with a warning. Linux only, needs root.
 
 ## Index format
 
