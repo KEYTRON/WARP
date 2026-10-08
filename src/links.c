@@ -42,6 +42,7 @@ static const char *const allowed[] = {
     "/etc/xdg/", "/etc/dbus-1/", "/etc/pam.d/", "/etc/polkit-1/",
     "/etc/init.d/", "/etc/conf.d/", "/etc/X11/", "/etc/systemd/",
     "/etc/ld.so.conf.d/", "/etc/profile.d/", "/etc/fonts/", "/etc/environment.d/",
+    "/var/lib/AccountsService/icons/",      /* user pictures: AccountsService reads only there */
     NULL
 };
 
@@ -71,11 +72,11 @@ static int target_allowed(const char *to) {
     return 0;
 }
 
-/* "share/x" -> "/usr/share/x", "etc/x" -> "/etc/x": the files/ tree mirrors a DESTDIR install. */
+/* "share/x" -> "/usr/share/x", "etc/x" -> "/etc/x", "var/x" -> "/var/x": the files/ tree mirrors a DESTDIR install. */
 static int resolve_link(const json_t *item, char *from, size_t fsz, char *to, size_t tsz) {
     if (item->type == JSON_STRING) {
         snprintf(from, fsz, "%s", item->v.s);
-        if (strncmp(item->v.s, "etc/", 4) == 0) snprintf(to, tsz, "/%s", item->v.s);
+        if (strncmp(item->v.s, "etc/", 4) == 0 || strncmp(item->v.s, "var/", 4) == 0) snprintf(to, tsz, "/%s", item->v.s);
         else                                    snprintf(to, tsz, "/usr/%s", item->v.s);
     } else if (item->type == JSON_OBJECT) {
         snprintf(from, fsz, "%s", json_str((json_t *)item, "from", ""));

@@ -328,7 +328,8 @@ entfernt sie; `warp links [pkg]` listet sie.
 - Ziele müssen in einem Integrationsverzeichnis liegen: `/usr/bin`, `/usr/share`,
   `/usr/lib`, `/usr/lib64`, `/usr/libexec`, unter `/etc` nur `xdg`, `dbus-1`, `pam.d`,
   `polkit-1`, `init.d`, `conf.d`, `X11`, `systemd`, `ld.so.conf.d`,
-  `profile.d`, `fonts`, `environment.d`. Ein Link nach `/sbin/...` oder mit `..`
+  `profile.d`, `fonts`, `environment.d`, dazu `/var/lib/AccountsService/icons`
+  für Benutzerbilder (`var/...` landet in `/var/...`). Ein Link nach `/sbin/...` oder mit `..`
   wird abgelehnt; `/usr/bin` ist erlaubt, weil Desktops absolute
   `/usr/bin/...`-Pfade in ihre D-Bus- und `.desktop`-Dateien schreiben, und ein
   vorhandenes Programm dort wird nie ersetzt.

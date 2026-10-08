@@ -325,7 +325,8 @@ takes them away; `warp links [pkg]` lists them.
 - Targets must lie under an integration directory: `/usr/bin`, `/usr/share`,
   `/usr/lib`, `/usr/lib64`, `/usr/libexec`, and under `/etc` only `xdg`, `dbus-1`,
   `pam.d`, `polkit-1`, `init.d`, `conf.d`, `X11`, `systemd`, `ld.so.conf.d`,
-  `profile.d`, `fonts`, `environment.d`. A link to `/sbin/...` or with `..` is
+  `profile.d`, `fonts`, `environment.d`, and `/var/lib/AccountsService/icons`
+  for user pictures (`var/...` maps to `/var/...`). A link to `/sbin/...` or with `..` is
   refused; `/usr/bin` is allowed because desktops write absolute
   `/usr/bin/...` paths into their D-Bus and `.desktop` files, and an existing
   program there is never replaced.

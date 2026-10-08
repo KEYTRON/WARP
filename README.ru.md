@@ -328,7 +328,8 @@ WARP знает и обратное — кому что нужно. `warp remove
 - Цель обязана лежать в интеграционном каталоге: `/usr/bin`, `/usr/share`,
   `/usr/lib`, `/usr/lib64`, `/usr/libexec`, а в `/etc` только `xdg`, `dbus-1`, `pam.d`,
   `polkit-1`, `init.d`, `conf.d`, `X11`, `systemd`, `ld.so.conf.d`,
-  `profile.d`, `fonts`, `environment.d`. Ссылка в `/sbin/...` или с `..`
+  `profile.d`, `fonts`, `environment.d`, плюс `/var/lib/AccountsService/icons`
+  для аватаров (`var/...` идёт в `/var/...`). Ссылка в `/sbin/...` или с `..`
   отклоняется; `/usr/bin` разрешён, ибо окружения прописывают абсолютные пути
   `/usr/bin/...` в D-Bus- и `.desktop`-файлы, а существующая там программа
   никогда не заменяется.
