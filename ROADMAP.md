@@ -1,6 +1,6 @@
 # WARP roadmap
 
-Stage: 0.4.9
+Stage: 0.4.10
 
 Stages go in order: `[x]` is done, `[ ]` is planned. The current stage is the first unfinished one.
 
@@ -96,8 +96,18 @@ WARP was started there by accident (0.4.1 built from source and ran); SSH access
 - [ ] Vulnerabilities from OSV.dev: a PR for a version with a known CVE is marked urgent
 - [ ] Signing the index stays with a human: automation can never ship a package on its own
 
+## Desktop environments (2026-10-08)
+Any desktop environment (DDE first, then others) installed from a WARP repository, with its versions side by side like any package.
+- [x] System links: `install_links` in the manifest put session files, D-Bus services, polkit, PAM and init scripts in place for the active version; they follow upgrade/switch/rollback, `remove` takes them away, `warp links` lists them; never over a file WARP did not create, only under integration directories
+- [x] Triggers by name only (`ldconfig`, `glib-schemas`, `desktop-database`, `icon-cache`, `mime-database`, `dbus-reload`), commands compiled in
+- [x] Dependency resolution on top of the signed index: missing ones installed, others moved to the wanted version unless pinned, cycles stopped; `make-index.py` takes `deps` from the archive manifests
+- [ ] Reverse dependencies: `remove` and `upgrade` warn about (or refuse) breaking a package that needs the exact version
+- [ ] System users and groups for display managers and daemons (sysusers-style, declared in the manifest)
+- [ ] Build recipes for DDE (dtk6*, dde-shell, dde-session, dde-control-center, dde-daemon, ddm, treeland, ...) and publishing to `keytron`
+- [ ] Next desktop environments after DDE
+
 ## Next
-- [ ] Dependency resolution on top of the signed index
+- [x] Dependency resolution on top of the signed index (0.4.10, see Desktop environments)
 - [ ] Package licenses: read before installing (from the index) and after (from the installed package), e.g. `warp license <package>`
 - [ ] Optional package components (e.g. CUDA, ROCm, Vulkan backends): one package, the client installs only the ones matching the hardware, `--with` / `--without` to choose by hand
 - [ ] What's new in a version: release notes in the signed index, shown by `warp upgrade` and `warp info` before upgrading and by `warp changelog <package>` afterwards

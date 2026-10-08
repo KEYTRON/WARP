@@ -40,6 +40,7 @@ static void print_help(void) {
         "    pin|unpin  <pkg> [ver] Keep a version: 'upgrade' leaves it alone\n"
         "    run        <pkg>[@ver] [args]  Run a version without switching\n"
         "    gc         [--keep N] [--dry-run]  Remove versions nobody uses\n"
+        "    links      [pkg]       Files the active versions linked into the system\n"
         "    info       <pkg>       Show package details\n"
         "    update                 Refresh package indexes\n"
         "    repo       list|add|remove|enable|disable   Manage repositories\n"
@@ -112,6 +113,7 @@ static const cmd_t commands[] = {
     { "unpin",     cmd_unpin     },
     { "run",       cmd_run       },
     { "gc",        cmd_gc        },
+    { "links",     cmd_links     },
     { NULL, NULL }
 };
 

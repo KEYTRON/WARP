@@ -29,6 +29,8 @@ jobs:
         run: sh tests/crypto.sh
       - name: Versions live side by side
         run: sh tests/versions.sh
+      - name: System links and dependencies
+        run: sh tests/links-deps.sh
       - name: Node report
         run: sh tests/node-stats.sh
       - name: Multi-platform

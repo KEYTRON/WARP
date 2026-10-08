@@ -76,6 +76,7 @@ unter macOS (einmal per `sudo` zu Ihrem gemacht, danach braucht nichts mehr Root
 | `warp remove <Paket>` | Ein Paket entfernen |
 | `warp rollback <Paket>` | Eine Version zurück durch den Aktivierungsverlauf (wiederholen für weiter zurück) |
 | `warp versions` / `switch` / `pin` / `unpin` / `run` / `gc` | Versionen nebeneinander, siehe unten |
+| `warp links [pkg]` | Dateien, die die aktiven Versionen ins System verlinkt haben (siehe Systemlinks) |
 | `warp list` / `warp info <Paket>` | Installierte Pakete / Details |
 | `warp repo list\|add\|remove\|enable\|disable` | Repositorys verwalten |
 | `warp delta <alt> <neu> <aus>` | Ein binäres Delta zwischen zwei Archiven erzeugen |
@@ -285,8 +286,52 @@ Repository festgelegt, es sei denn, `repo` nennt ausdrücklich ein anderes — e
 kann keine Pakete aus einem Repository einziehen, das es nicht nennt, und ein Paket kann
 nicht durch eine „ähnliche“ Version aus einer nicht vertrauenswürdigen Quelle erfüllt werden.
 Das Manifest im Archiv darf die Liste für Menschen wiederholen; widerspricht es dem Index,
-wird die Installation verweigert. Die Auflösung über diese geschlossene Welt ist der nächste
-Schritt der Roadmap; heute liest und zeigt der Client `deps`.
+wird die Installation verweigert. `warp install` löst sie über diese geschlossene Welt vor dem Paket selbst auf: eine
+Abhängigkeit mit der gewünschten aktiven Version bleibt, eine fehlende wird installiert, eine
+in anderer Version wird auf die gewünschte umgestellt, außer sie ist festgelegt (dann warnt
+WARP und behält die Festlegung). Eine fehlende Abhängigkeit oder ein Zyklus bricht die
+Installation ab. `tools/make-index.py` übernimmt `deps` aus dem `manifest.json` jedes
+Archivs, der Herausgeber schreibt sie also einmal, neben die Dateien.
+
+## Systemlinks (Desktop-Umgebungen, Dienste)
+
+Programme kommen über `install_bins` in den `PATH`. Eine Desktop-Umgebung oder
+ein Dienst braucht außerdem Dateien dort, wo das System sie sucht:
+Sitzungsdateien, D-Bus-Dienste, polkit-Aktionen, PAM, Init-Skripte. Das Manifest
+listet sie auf, und die aktive Version bekommt an jeder Stelle einen Symlink:
+
+```json
+"install_links": [
+  "share/xsessions/dde-x11.desktop",
+  "etc/pam.d/ddm",
+  {"from": "lib/ddm/ddm.initd", "to": "/etc/init.d/ddm"}
+],
+"triggers": ["ldconfig", "glib-schemas", "dbus-reload"]
+```
+
+Ein einfacher String ist ein Pfad in `files/`, das eine `DESTDIR`-Installation
+nachbildet: `etc/...` landet in `/etc/...`, alles andere in `/usr/...`. Die Links
+folgen der aktiven Version bei `upgrade`, `switch` und `rollback`, `remove`
+entfernt sie; `warp links [pkg]` listet sie.
+
+- WARP überschreibt nie eine Datei, die es nicht selbst angelegt hat: ein
+  vorhandenes Ziel, das kein Link in dasselbe Paket ist, bleibt und wird gemeldet.
+- Ziele müssen in einem Integrationsverzeichnis liegen: `/usr/share`, `/usr/lib`,
+  `/usr/lib64`, `/usr/libexec`, unter `/etc` nur `xdg`, `dbus-1`, `pam.d`,
+  `polkit-1`, `init.d`, `conf.d`, `X11`, `systemd`, `ld.so.conf.d`,
+  `profile.d`, `fonts`, `environment.d`. Ein Link nach `/usr/bin/...` oder mit
+  `..` wird abgelehnt.
+- Entfernt werden nur aufgezeichnete Links (`/var/lib/warp/links/<pkg>`), die
+  noch ins Paket zeigen; ein von Hand ersetzter bleibt.
+- `triggers` nennen nur in WARP einkompilierte Befehle (`ldconfig`,
+  `glib-schemas`, `desktop-database`, `icon-cache`, `mime-database`,
+  `dbus-reload`); ein Manifest enthält nie eine Befehlszeile.
+  `WARP_NO_TRIGGERS=1` überspringt sie.
+- Systemlinks gibt es nur unter Linux.
+
+Die Bibliotheken eines Pakets bleiben in seinem Store-Eintrag; ein Programm findet
+sie über einen RPATH auf das stabile `/var/lib/warp/active/<pkg>/files/lib`, ein
+Versionswechsel der Bibliothek braucht also kein Neulinken.
 
 ## Indexformat
 
@@ -345,6 +390,7 @@ gemeldet. Der einkompilierte Tracker `keytron-prime.org/warp` wird nur für das 
 sh tests/delta-roundtrip.sh        # Delta bauen/anwenden, falsche Basis und Abschneiden werden abgelehnt
 sh tests/crypto.sh                 # SHA-256 und Ed25519: RFC/NIST-Vektoren, Fälschungen, OpenSSL als Orakel
 sh tests/versions.sh               # Versionen nebeneinander: beliebige installieren, wechseln, festlegen, Rollback-Kette, run, gc
+sh tests/links-deps.sh             # Systemlinks (Ablehnungen, Konflikte, upgrade/rollback/remove) und Abhängigkeitsauflösung
 sh tests/multi-platform.sh         # ein Build pro Betriebssystem/CPU im Index; der Client nimmt nur seinen eigenen
 sh tests/node-stats.sh             # Knoten: Freiwilligengrenzen, ein Prozess, Zähler, Statistik nur mit Zustimmung
 sh tests/e2e-delta-upgrade.sh      # eigenes Repo über HTTP, install → Upgrade per Delta → Rollback, im K1OS-Container

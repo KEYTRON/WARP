@@ -74,6 +74,7 @@ add `eval "$(warp shellenv)"` to the shell profile), `$PREFIX` in Termux (no roo
 | `warp remove <pkg>` | Remove a package |
 | `warp rollback <pkg>` | Go one version back through the activation history (repeat for more) |
 | `warp versions` / `switch` / `pin` / `unpin` / `run` / `gc` | Versions side by side, see below |
+| `warp links [pkg]` | Files the active versions linked into the system (see System links) |
 | `warp list` / `warp info <pkg>` | Installed packages / details |
 | `warp repo list\|add\|remove\|enable\|disable` | Manage repositories |
 | `warp delta <old> <new> <out>` | Build a binary delta between two archives |
@@ -282,8 +283,51 @@ within the same repository unless `repo` names another one explicitly — a
 repository cannot pull in packages from a repository it does not name, and a
 package cannot be satisfied by a "similar" version from an untrusted source.
 The manifest inside an archive may repeat the list for humans; if it disagrees
-with the index, installation is refused. Resolution over this closed world is
-the next step on the roadmap; today the client parses and shows `deps`.
+with the index, installation is refused. `warp install` resolves them over this closed world before the package
+itself: a dependency whose wanted version is active is left alone, a missing
+one is installed, one at another version is moved to the wanted one unless it
+is pinned (then WARP warns and keeps the pin). A missing dependency or a cycle
+stops the install. `tools/make-index.py` takes `deps` from each archive's
+`manifest.json`, so a publisher writes them once, next to the files.
+
+## System links (desktop environments, daemons)
+
+Programs reach the `PATH` through `install_bins`. A desktop environment or a
+daemon also needs files where the system looks for them: session files, D-Bus
+services, polkit actions, PAM, init scripts. The manifest lists them, and the
+active version gets a symlink at each place:
+
+```json
+"install_links": [
+  "share/xsessions/dde-x11.desktop",
+  "etc/pam.d/ddm",
+  {"from": "lib/ddm/ddm.initd", "to": "/etc/init.d/ddm"}
+],
+"triggers": ["ldconfig", "glib-schemas", "dbus-reload"]
+```
+
+A plain string is a path inside `files/` that mirrors a `DESTDIR` install:
+`etc/...` goes to `/etc/...`, everything else to `/usr/...`. The links follow
+the active version through `upgrade`, `switch` and `rollback`, and `remove`
+takes them away; `warp links [pkg]` lists them.
+
+- WARP never overwrites a file it did not create: a target that exists and is
+  not a link into the same package is left alone and reported.
+- Targets must lie under an integration directory: `/usr/share`, `/usr/lib`,
+  `/usr/lib64`, `/usr/libexec`, and under `/etc` only `xdg`, `dbus-1`,
+  `pam.d`, `polkit-1`, `init.d`, `conf.d`, `X11`, `systemd`, `ld.so.conf.d`,
+  `profile.d`, `fonts`, `environment.d`. A link to `/usr/bin/...` or with
+  `..` is refused.
+- Only recorded links (`/var/lib/warp/links/<pkg>`) that still point into the
+  package are removed; a link someone replaced by hand stays.
+- `triggers` only name commands compiled into WARP (`ldconfig`, `glib-schemas`,
+  `desktop-database`, `icon-cache`, `mime-database`, `dbus-reload`); a
+  manifest never carries a command line. `WARP_NO_TRIGGERS=1` skips them.
+- System links are made on Linux only.
+
+Libraries of a package stay in its store entry; a binary finds them through an
+RPATH to the stable `/var/lib/warp/active/<pkg>/files/lib`, so switching a
+library's version needs no relinking.
 
 ## Index format
 
@@ -341,6 +385,7 @@ is used only for the built-in `k1os`.
 sh tests/delta-roundtrip.sh        # delta build/apply, wrong base and truncation rejected
 sh tests/crypto.sh              # SHA-256 and Ed25519: RFC/NIST vectors, forgeries, OpenSSL as the oracle
 sh tests/versions.sh              # versions side by side: install any, switch, pin, rollback chain, run, gc
+sh tests/links-deps.sh            # system links (refusals, conflicts, upgrade/rollback/remove) and dependency resolution
 sh tests/multi-platform.sh        # one build per OS/CPU in the index; the client takes only its own
 sh tests/node-stats.sh             # node: volunteer limits, one process, counters, opt-in statistics
 sh tests/e2e-delta-upgrade.sh      # custom repo over HTTP, install → upgrade via delta → rollback, in the K1OS container

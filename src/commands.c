@@ -133,9 +133,11 @@ static int install_archive(const warp_pkg_entry_t *entry, const char *tmp_path) 
             if (jd && jd->type == JSON_ARRAY) {
                 for (int i = 0; i < jd->v.arr.count; i++) {
                     json_t *d = jd->v.arr.items[i];
-                    if (!d || d->type != JSON_STRING) continue;
+                    const char *dn = !d ? NULL : d->type == JSON_STRING ? d->v.s
+                                   : d->type == JSON_OBJECT ? json_str(d, "name", NULL) : NULL;
+                    if (!dn) continue;
                     char dep[WARP_MAX_NAME];
-                    strncpy(dep, d->v.s, sizeof(dep) - 1);
+                    strncpy(dep, dn, sizeof(dep) - 1);
                     dep[sizeof(dep) - 1] = '\0';
                     dep[strcspn(dep, "@=<>~ ")] = '\0';        /* drop any version qualifier */
                     int known = 0;
@@ -209,6 +211,65 @@ static void print_entry_header(const warp_pkg_entry_t *entry) {
     if (entry->size > 0) printf("  Size: %.1f KB\n\n", (double)entry->size / 1024.0);
 }
 
+static int install_entry(const warp_index_t *idx, const warp_pkg_entry_t *entry,
+                         const warp_installed_t *installed);
+
+/* ── dependencies ────────────────────────────────────────────────
+ * The signed index pins each dependency by name and exact version, in the
+ * same repository unless it names another one. Before a package is installed
+ * its dependencies are: left alone when that version is already active;
+ * installed when missing; moved to the wanted version when another one is
+ * active and not pinned (a pin is a deliberate choice: warn, keep it). A cycle
+ * or a chain deeper than DEP_DEPTH stops with an error instead of looping. */
+#define DEP_DEPTH 24
+static char dep_chain[DEP_DEPTH][WARP_MAX_NAME];
+static int  dep_depth;
+
+static int install_deps(const warp_index_t *idx, const warp_pkg_entry_t *entry) {
+    for (int i = 0; i < entry->dep_count; i++) {
+        const warp_dep_ref_t *d = &entry->deps[i];
+        if (!store_name_ok(d->name)) { warp_err("%s: bad dependency name '%s'", entry->name, d->name); return WARP_ERR_INVAL; }
+        for (int k = 0; k < dep_depth; k++)
+            if (strcmp(dep_chain[k], d->name) == 0) {
+                warp_err("Dependency cycle: %s needs %s, which is already being installed", entry->name, d->name);
+                return WARP_ERR_INVAL;
+            }
+
+        warp_installed_t inst;
+        memset(&inst, 0, sizeof(inst));
+        int have = store_is_installed(d->name, &inst);
+        if (have) {
+            warp_version_t *v; int n;
+            store_versions(d->name, &v, &n);
+            for (int k = 0; k < n; k++) if (v[k].active) snprintf(inst.version, sizeof(inst.version), "%s", v[k].version);
+            free(v);
+            if (!d->version[0] || strcmp(inst.version, d->version) == 0) continue;
+            char pin[WARP_MAX_NAME];
+            if (store_pin_get(d->name, pin, sizeof(pin))) {
+                warp_warn("%s wants %s %s, but %s is pinned at %s: left alone", entry->name, d->name, d->version, d->name, pin);
+                continue;
+            }
+        }
+
+        char spec[WARP_REPO_NAME + 2 * WARP_MAX_NAME + 4];
+        snprintf(spec, sizeof(spec), "%s/%s%s%s", d->repo[0] ? d->repo : entry->repo, d->name,
+                 d->version[0] ? "@" : "", d->version);
+        warp_pkg_entry_t dep;
+        if (index_find(idx, spec, &dep) != WARP_OK) {
+            warp_err("%s needs %s, which repository %s does not publish", entry->name, spec,
+                     d->repo[0] ? d->repo : entry->repo);
+            return WARP_ERR_NOENT;
+        }
+        if (have) warp_info("%s needs %s %s (active: %s)", entry->name, d->name, dep.version, inst.version);
+        else      warp_info("%s needs %s %s", entry->name, d->name, dep.version);
+        if (install_entry(idx, &dep, have ? &inst : NULL) != WARP_OK) {
+            warp_err("Dependency %s %s failed: not installing %s", d->name, dep.version, entry->name);
+            return WARP_ERR_IO;
+        }
+    }
+    return WARP_OK;
+}
+
 /* Install (or upgrade to) `entry`. `installed` is the currently active
  * version when upgrading, NULL for a fresh install. */
 static int install_entry(const warp_index_t *idx, const warp_pkg_entry_t *entry,
@@ -227,6 +288,13 @@ static int install_entry(const warp_index_t *idx, const warp_pkg_entry_t *entry,
         warp_err("No SHA256 published for '%s' in the index", entry->name);
         warp_err("Refusing to install a package whose integrity can't be verified");
         return WARP_ERR_SIG;
+    }
+    if (entry->dep_count > 0) {
+        if (dep_depth >= DEP_DEPTH) { warp_err("Dependency chain deeper than %d at %s", DEP_DEPTH, entry->name); return WARP_ERR_INVAL; }
+        snprintf(dep_chain[dep_depth++], WARP_MAX_NAME, "%s", entry->name);
+        int drc = install_deps(idx, entry);
+        dep_depth--;
+        if (drc != WARP_OK) return drc;
     }
     const warp_repo_t *repo = index_repo_of(idx, entry);
     print_entry_header(entry);

@@ -6,7 +6,7 @@
 #include <sys/types.h>
 
 /* ── version & paths ─────────────────────────────────────────── */
-#define WARP_VERSION     "0.4.9"
+#define WARP_VERSION     "0.4.10"
 /* Where things live. Linux: /var/lib/warp and /usr/local/bin (root). macOS: a prefix owned by the
  * user, /opt/warp (like Homebrew's), so nothing is installed by root afterwards and `warp shellenv`
  * puts /opt/warp/bin on the PATH. Termux: under $PREFIX, there is no root and no /tmp there. */
@@ -35,6 +35,10 @@
 #define WARP_BIN_DIR     "/usr/local/bin"
 #endif
 #define WARP_TMP_DIR     "/tmp"
+#endif
+/* Root of the system links (install_links); the tests point it at a scratch directory. */
+#ifndef WARP_SYSROOT
+#define WARP_SYSROOT     ""
 #endif
 #define WARP_INDEX_MIRRORS 3
 extern const char *g_warp_mirrors[WARP_INDEX_MIRRORS];
@@ -340,6 +344,11 @@ int  store_pin_set(const char *name, const char *ver);
 void store_pin_clear(const char *name);
 void store_free_list(warp_installed_t *list, int count);
 
+/* system links and triggers (links.c) */
+unsigned links_clear(const char *name);
+unsigned links_apply(const char *name, const char *store_pkg, int *failed);
+void     links_run_triggers(unsigned mask);
+
 /* ── index.h (inline) ────────────────────────────────────────── */
 int  index_load(warp_index_t *idx, int force_refresh);
 int  index_search(const warp_index_t *idx, const char *query,
@@ -399,6 +408,7 @@ int cmd_pin       (int argc, char **argv);
 int cmd_unpin     (int argc, char **argv);
 int cmd_run       (int argc, char **argv);
 int cmd_gc        (int argc, char **argv);
+int cmd_links     (int argc, char **argv);
 int cmd_upgrade   (int argc, char **argv);
 int cmd_repo      (int argc, char **argv);
 int cmd_delta     (int argc, char **argv);

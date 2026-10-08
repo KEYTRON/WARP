@@ -242,6 +242,9 @@ static int activate_impl(const char *name, const char *hash12, int push) {
     snprintf(active_link, sizeof(active_link), WARP_STORE_DIR "/active/%s", name);
     snprintf(prev_link,   sizeof(prev_link),   WARP_STORE_DIR "/prev/%s",   name);
 
+    /* System links follow the active version: the old ones go first. */
+    unsigned trig = links_clear(name);
+
     /* Move current active → prev */
     if (path_exists(active_link)) {
         unlink(prev_link);
@@ -303,6 +306,11 @@ static int activate_impl(const char *name, const char *hash12, int push) {
         }
     }
 
+    int failed = 0;
+    trig |= links_apply(name, store_pkg, &failed);
+    links_run_triggers(trig);
+    if (failed) warp_warn("%s: %d system link(s) not made (see above); 'warp links %s' lists the rest", name, failed, name);
+
     return WARP_OK;
 }
 
@@ -319,6 +327,8 @@ int store_remove(const char *name) {
         warp_err("Not installed: %s", name);
         return WARP_ERR_NOENT;
     }
+
+    unsigned trig = links_clear(name);
 
     /* Remove WARP_BIN_DIR symlinks pointing into this package */
     char store_pkg[512] = {0};
@@ -350,6 +360,7 @@ int store_remove(const char *name) {
     unlink(prev_link);
     unlink(hist);
     store_pin_clear(name);       /* the store entries stay until `warp gc` */
+    links_run_triggers(trig);
     return WARP_OK;
 }
 
@@ -511,6 +522,8 @@ int store_rollback(const char *name) {
     ssize_t n = readlink(prev_link, prev_target, sizeof(prev_target)-1);
     if (n <= 0) return WARP_ERR_IO;
     prev_target[n] = '\0';
+
+    links_clear(name);           /* the links of the version we leave; activate_impl makes the new ones */
 
     /* Swap active ↔ prev */
     char active_target[512] = {0};

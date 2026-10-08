@@ -26,6 +26,9 @@ jobs:
       - name: Versions side by side
         run: sh tests/versions.sh
 
+      - name: System links and dependencies
+        run: sh tests/links-deps.sh
+
       - name: Prebuilt packages per platform
         run: sh tests/multi-platform.sh
 

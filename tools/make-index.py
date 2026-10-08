@@ -26,6 +26,7 @@ import json
 import re
 import subprocess
 import sys
+import tarfile
 from datetime import date
 from pathlib import Path
 
@@ -51,6 +52,26 @@ def platform_of(tag: str) -> str:
         if tag.startswith(os_name + "_"):
             return f"{os_name}-{tag[len(os_name) + 1:]}{libc}"
     return f"linux-{tag}{libc}"
+
+
+def manifest_deps(archive: Path):
+    """`deps` from the archive's manifest.json, normalised to [{name, version[, repo]}], or None."""
+    try:
+        with tarfile.open(archive, "r:gz") as tar:
+            member = tar.getmember("manifest.json")
+            manifest = json.load(tar.extractfile(member))
+    except (KeyError, tarfile.TarError, json.JSONDecodeError, OSError):
+        return None
+    deps = manifest.get("deps")
+    if not isinstance(deps, list):
+        return None
+    out = []
+    for d in deps:
+        if isinstance(d, str):
+            out.append({"name": d})
+        elif isinstance(d, dict) and d.get("name"):
+            out.append({k: d[k] for k in ("name", "version", "repo") if d.get(k)})
+    return out
 
 
 def sha256(path: Path) -> str:
@@ -159,7 +180,12 @@ def main() -> int:
                 "version": first["version"],
                 "description": old.get(name, {}).get("description", f"{name} {first['version']} for K1OS"),
             }
-            deps = old.get(name, {}).get("deps")
+            # The manifest of the archive itself says what it needs; an older index is the fallback.
+            first_archive = next(a for (_, a, _), _ in [chosen.get(LEGACY) or chosen.get(LEGACY + "-static")
+                                                        or next(iter(chosen.values()))])
+            deps = manifest_deps(first_archive)
+            if deps is None:
+                deps = old.get(name, {}).get("deps")
             if deps:
                 entry["deps"] = deps
             tr = translations.get(name) or old.get(name, {}).get("descriptions") or {}
