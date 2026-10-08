@@ -220,8 +220,9 @@ static int install_entry(const warp_index_t *idx, const warp_pkg_entry_t *entry,
  * same repository unless it names another one. Before a package is installed
  * its dependencies are: left alone when that version is already active;
  * installed when missing; moved to the wanted version when another one is
- * active and not pinned (a pin is a deliberate choice: warn, keep it). A cycle
- * or a chain deeper than DEP_DEPTH stops with an error instead of looping. */
+ * active and not pinned (a pin is a deliberate choice: warn, keep it). In a
+ * cycle the package already being installed up the chain counts as there; a
+ * chain deeper than DEP_DEPTH stops with an error. */
 #define DEP_DEPTH 24
 static char dep_chain[DEP_DEPTH][WARP_MAX_NAME];
 static int  dep_depth;
@@ -230,11 +231,14 @@ static int install_deps(const warp_index_t *idx, const warp_pkg_entry_t *entry) 
     for (int i = 0; i < entry->dep_count; i++) {
         const warp_dep_ref_t *d = &entry->deps[i];
         if (!store_name_ok(d->name)) { warp_err("%s: bad dependency name '%s'", entry->name, d->name); return WARP_ERR_INVAL; }
-        for (int k = 0; k < dep_depth; k++)
-            if (strcmp(dep_chain[k], d->name) == 0) {
-                warp_err("Dependency cycle: %s needs %s, which is already being installed", entry->name, d->name);
-                return WARP_ERR_INVAL;
-            }
+        int in_chain = 0;
+        for (int k = 0; k < dep_depth; k++) in_chain |= strcmp(dep_chain[k], d->name) == 0;
+        if (in_chain) {
+            /* A desktop's parts need each other at run time: the package up the chain
+             * is being installed right now and satisfies this one. */
+            warp_info("%s needs %s, which is being installed already (cycle)", entry->name, d->name);
+            continue;
+        }
 
         warp_installed_t inst;
         memset(&inst, 0, sizeof(inst));

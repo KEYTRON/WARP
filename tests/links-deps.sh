@@ -5,7 +5,7 @@
 # did not create is never overwritten, a link outside the integration
 # directories is refused, remove takes the links away. Dependencies come from
 # the archive manifests through make-index.py into the signed index and are
-# installed (or moved to the wanted version) first; a cycle stops cleanly.
+# installed (or moved to the wanted version) first; a cycle installs both.
 # Reverse dependencies: remove refuses, upgrade holds back, switch warns.
 # System users and groups from the manifest are validated before creation.
 # Isolated store and system root, local repo.
@@ -127,9 +127,9 @@ ok "a link replaced by hand survives remove"
 if "$W" install lonely >"$T/out" 2>&1; then fail "a missing dependency must fail"; fi; out=$(plain < "$T/out")
 echo "$out" | grep -q "ghost" || fail "missing dependency not named: $out"
 [ ! -e "$T/store/active/lonely" ] || fail "lonely installed without its dependency"
-if "$W" install cyca >"$T/out" 2>&1; then fail "a cycle must fail"; fi; out=$(plain < "$T/out")
-echo "$out" | grep -q "cycle" || fail "cycle not reported: $out"
-ok "missing dependency and dependency cycle are refused"
+"$W" install cyca >"$T/out" 2>&1 || fail "a cycle must install: $(cat "$T/out")"
+[ -e "$T/store/active/cyca" ] && [ -e "$T/store/active/cycb" ] || fail "cycle: both should be installed"
+ok "missing dependency refused; a cycle (as desktops have) installs both"
 
 # 9. reverse dependencies: remove refuses, upgrade holds back, switch warns
 "$W" install shell@1.0 >/dev/null 2>&1 || fail "install shell@1.0"

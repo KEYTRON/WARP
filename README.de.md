@@ -289,8 +289,9 @@ Das Manifest im Archiv darf die Liste für Menschen wiederholen; widerspricht es
 wird die Installation verweigert. `warp install` löst sie über diese geschlossene Welt vor dem Paket selbst auf: eine
 Abhängigkeit mit der gewünschten aktiven Version bleibt, eine fehlende wird installiert, eine
 in anderer Version wird auf die gewünschte umgestellt, außer sie ist festgelegt (dann warnt
-WARP und behält die Festlegung). Eine fehlende Abhängigkeit oder ein Zyklus bricht die
-Installation ab. `tools/make-index.py` übernimmt `deps` aus dem `manifest.json` jedes
+WARP und behält die Festlegung). Eine fehlende Abhängigkeit bricht die Installation ab; in einem Zyklus
+(die Teile eines Desktops brauchen einander) gilt das Paket, das gerade installiert wird, als
+vorhanden. `tools/make-index.py` übernimmt `deps` aus dem `manifest.json` jedes
 Archivs, der Herausgeber schreibt sie also einmal, neben die Dateien.
 
 Jede installierte Version behält die Abhängigkeiten, mit denen sie installiert wurde, WARP

@@ -286,8 +286,9 @@ The manifest inside an archive may repeat the list for humans; if it disagrees
 with the index, installation is refused. `warp install` resolves them over this closed world before the package
 itself: a dependency whose wanted version is active is left alone, a missing
 one is installed, one at another version is moved to the wanted one unless it
-is pinned (then WARP warns and keeps the pin). A missing dependency or a cycle
-stops the install. `tools/make-index.py` takes `deps` from each archive's
+is pinned (then WARP warns and keeps the pin). A missing dependency stops the
+install; in a cycle (the parts of a desktop need each other) the package
+already being installed counts as present. `tools/make-index.py` takes `deps` from each archive's
 `manifest.json`, so a publisher writes them once, next to the files.
 
 Each installed version keeps the dependencies it was installed with, so WARP

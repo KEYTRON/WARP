@@ -100,7 +100,7 @@ WARP was started there by accident (0.4.1 built from source and ran); SSH access
 Any desktop environment (DDE first, then others) installed from a WARP repository, with its versions side by side like any package.
 - [x] System links: `install_links` in the manifest put session files, D-Bus services, polkit, PAM and init scripts in place for the active version; they follow upgrade/switch/rollback, `remove` takes them away, `warp links` lists them; never over a file WARP did not create, only under integration directories
 - [x] Triggers by name only (`ldconfig`, `glib-schemas`, `desktop-database`, `icon-cache`, `mime-database`, `dbus-reload`), commands compiled in
-- [x] Dependency resolution on top of the signed index: missing ones installed, others moved to the wanted version unless pinned, cycles stopped; `make-index.py` takes `deps` from the archive manifests
+- [x] Dependency resolution on top of the signed index: missing ones installed, others moved to the wanted version unless pinned, a cycle installs both; `make-index.py` takes `deps` from the archive manifests
 - [x] Reverse dependencies: `remove` and `upgrade` warn about (or refuse) breaking a package that needs the exact version
 - [x] System users and groups for display managers and daemons (sysusers-style, declared in the manifest)
 - [ ] Build recipes for DDE (dtk6*, dde-shell, dde-session, dde-control-center, dde-daemon, ddm, treeland, ...) and publishing to `keytron`
