@@ -41,7 +41,7 @@ pkg() {
 }
 pkg lib 1.0 ', "install_links": ["share/foo/lib.txt"], "triggers": ["ldconfig"]' share/foo/lib.txt
 pkg lib 2.0 ', "install_links": ["share/foo/lib.txt"], "triggers": ["ldconfig"]' share/foo/lib.txt
-pkg de 1.0 ', "deps": [{"name": "lib", "version": "1.0"}], "triggers": ["dbus-reload", "no-such-trigger"], "install_links": ["share/xsessions/de.desktop", "etc/pam.d/de", {"from": "lib/de/de.initd", "to": "/etc/init.d/de"}, {"from": "bin/de", "to": "/usr/bin/de"}, {"from": "share/de/x", "to": "/usr/share/../../etc/shadow"}, "share/xsessions/other.desktop"]' \
+pkg de 1.0 ', "deps": [{"name": "lib", "version": "1.0"}], "triggers": ["dbus-reload", "no-such-trigger"], "install_links": ["share/xsessions/de.desktop", "etc/pam.d/de", {"from": "lib/de/de.initd", "to": "/etc/init.d/de"}, {"from": "bin/de", "to": "/sbin/de"}, {"from": "share/de/x", "to": "/usr/share/../../etc/shadow"}, "share/xsessions/other.desktop"]' \
     share/xsessions/de.desktop etc/pam.d/de lib/de/de.initd bin/de share/de/x share/xsessions/other.desktop
 pkg de 2.0 ', "deps": [{"name": "lib", "version": "2.0"}], "install_links": ["share/xsessions/de.desktop", {"from": "lib/de/de.initd", "to": "/etc/init.d/de"}]' \
     share/xsessions/de.desktop lib/de/de.initd
@@ -84,7 +84,7 @@ echo "$out" | grep -q "de needs lib 1.0" || fail "no dependency message: $out"
 [ -L "$R/usr/share/xsessions/de.desktop" ] && [ "$(cat "$R/usr/share/xsessions/de.desktop")" = "de 1.0 share/xsessions/de.desktop" ] || fail "session link"
 [ "$(cat "$R/etc/pam.d/de")" = "de 1.0 etc/pam.d/de" ] || fail "etc/ shorthand link"
 [ "$(cat "$R/etc/init.d/de")" = "de 1.0 lib/de/de.initd" ] || fail "from/to link"
-[ ! -e "$R/usr/bin/de" ] || fail "/usr/bin is not an integration directory, link must be refused"
+[ ! -e "$R/sbin/de" ] || fail "/sbin is not an integration directory, link must be refused"
 [ ! -e "$R/etc/shadow" ] || fail "a .. path must be refused"
 echo "$out" | grep -q "outside the allowed" || fail "no refusal message: $out"
 [ "$(cat "$R/usr/share/xsessions/other.desktop")" = "system" ] && [ ! -L "$R/usr/share/xsessions/other.desktop" ] || fail "system file overwritten"
@@ -92,7 +92,7 @@ echo "$out" | grep -q "other.desktop already exists and is not WARP's" || fail "
 echo "$out" | grep -q "Unknown trigger 'no-such-trigger'" || fail "unknown trigger not reported: $out"
 echo "$out" | grep -q "Trigger dbus-reload skipped" || fail "triggers must not run against a scratch root: $out"
 "$W" links de | plain | grep -q "/etc/init.d/de" || fail "warp links"
-ok "deps first; session, PAM and init links; /usr/bin, .. and a system file refused; triggers named only"
+ok "deps first; session, PAM and init links; /sbin, .. and a system file refused; triggers named only"
 
 # 4. upgrade to de 2.0 moves lib to 2.0 and replaces the link set (PAM link gone)
 "$W" unpin de >/dev/null

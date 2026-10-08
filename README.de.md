@@ -324,11 +324,13 @@ entfernt sie; `warp links [pkg]` listet sie.
 
 - WARP überschreibt nie eine Datei, die es nicht selbst angelegt hat: ein
   vorhandenes Ziel, das kein Link in dasselbe Paket ist, bleibt und wird gemeldet.
-- Ziele müssen in einem Integrationsverzeichnis liegen: `/usr/share`, `/usr/lib`,
-  `/usr/lib64`, `/usr/libexec`, unter `/etc` nur `xdg`, `dbus-1`, `pam.d`,
+- Ziele müssen in einem Integrationsverzeichnis liegen: `/usr/bin`, `/usr/share`,
+  `/usr/lib`, `/usr/lib64`, `/usr/libexec`, unter `/etc` nur `xdg`, `dbus-1`, `pam.d`,
   `polkit-1`, `init.d`, `conf.d`, `X11`, `systemd`, `ld.so.conf.d`,
-  `profile.d`, `fonts`, `environment.d`. Ein Link nach `/usr/bin/...` oder mit
-  `..` wird abgelehnt.
+  `profile.d`, `fonts`, `environment.d`. Ein Link nach `/sbin/...` oder mit `..`
+  wird abgelehnt; `/usr/bin` ist erlaubt, weil Desktops absolute
+  `/usr/bin/...`-Pfade in ihre D-Bus- und `.desktop`-Dateien schreiben, und ein
+  vorhandenes Programm dort wird nie ersetzt.
 - Entfernt werden nur aufgezeichnete Links (`/var/lib/warp/links/<pkg>`), die
   noch ins Paket zeigen; ein von Hand ersetzter bleibt.
 - `triggers` nennen nur in WARP einkompilierte Befehle (`ldconfig`,

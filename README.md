@@ -321,11 +321,13 @@ takes them away; `warp links [pkg]` lists them.
 
 - WARP never overwrites a file it did not create: a target that exists and is
   not a link into the same package is left alone and reported.
-- Targets must lie under an integration directory: `/usr/share`, `/usr/lib`,
-  `/usr/lib64`, `/usr/libexec`, and under `/etc` only `xdg`, `dbus-1`,
+- Targets must lie under an integration directory: `/usr/bin`, `/usr/share`,
+  `/usr/lib`, `/usr/lib64`, `/usr/libexec`, and under `/etc` only `xdg`, `dbus-1`,
   `pam.d`, `polkit-1`, `init.d`, `conf.d`, `X11`, `systemd`, `ld.so.conf.d`,
-  `profile.d`, `fonts`, `environment.d`. A link to `/usr/bin/...` or with
-  `..` is refused.
+  `profile.d`, `fonts`, `environment.d`. A link to `/sbin/...` or with `..` is
+  refused; `/usr/bin` is allowed because desktops write absolute
+  `/usr/bin/...` paths into their D-Bus and `.desktop` files, and an existing
+  program there is never replaced.
 - Only recorded links (`/var/lib/warp/links/<pkg>`) that still point into the
   package are removed; a link someone replaced by hand stays.
 - `triggers` only name commands compiled into WARP (`ldconfig`, `glib-schemas`,

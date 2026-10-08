@@ -21,7 +21,9 @@
  * WARP never overwrites a file it did not create: a target that exists and is
  * not a link into this package's store is left alone and reported. Targets
  * must be under one of the integration directories below — a package cannot
- * drop a link onto /usr/bin/sudo or /etc/shadow. Every link made is recorded in
+ * drop a link onto /sbin/init or /etc/shadow, and since nothing is ever
+ * overwritten, /usr/bin/sudo stays the system's. /usr/bin is allowed because
+ * desktops write absolute /usr/bin/... paths into their D-Bus and .desktop files. Every link made is recorded in
  * <store>/links/<name>, and only recorded links that still point into the
  * package are removed. Triggers are a fixed list of commands compiled in here;
  * a manifest only names them, it never carries a command line. */
@@ -33,10 +35,10 @@
 #endif
 
 #define LINKS_DIR WARP_STORE_DIR "/links"
-#define LINKS_MAX 1024
+#define LINKS_MAX 200000      /* a desktop links every file of the package: icons, translations */
 
 static const char *const allowed[] = {
-    "/usr/share/", "/usr/lib/", "/usr/lib64/", "/usr/libexec/",
+    "/usr/bin/", "/usr/share/", "/usr/lib/", "/usr/lib64/", "/usr/libexec/",
     "/etc/xdg/", "/etc/dbus-1/", "/etc/pam.d/", "/etc/polkit-1/",
     "/etc/init.d/", "/etc/conf.d/", "/etc/X11/", "/etc/systemd/",
     "/etc/ld.so.conf.d/", "/etc/profile.d/", "/etc/fonts/", "/etc/environment.d/",
