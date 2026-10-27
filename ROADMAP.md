@@ -116,3 +116,4 @@ Any desktop environment (DDE first, then others) installed from a WARP repositor
 - [ ] Declarative system description (`system.yaml`)
 - [x] Building and running in Termux: `warp 0.4.5` builds with clang and reports `os: android`, `arch: aarch64`; `tests/crypto.sh` passes there
 - [x] K1OS/K1K as a native target: `--root` / `--platform`, platform `k1k-x86_64`, services staged into `/SVC` with a generated `MANIFEST.TXT` (0.4.12)
+- [ ] WARP running on K1K itself: needs a C library and libcurl there (K1K roadmap); until then `/SVC` is staged from a host

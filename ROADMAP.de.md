@@ -118,3 +118,4 @@ Jede Desktop-Umgebung (zuerst DDE, dann weitere) aus einem WARP-Repository insta
 - [ ] Deklarative Systembeschreibung (`system.yaml`)
 - [ ] Bauen und Betrieb in Termux
 - [x] K1OS/K1K als native Zielplattform: `--root` / `--platform`, Plattform `k1k-x86_64`, Dienste nach `/SVC` mit erzeugtem `MANIFEST.TXT` (0.4.12)
+- [ ] WARP auf K1K selbst: braucht eine C-Bibliothek und libcurl auf K1K (K1K-Roadmap); bis dahin wird `/SVC` vom Host aus bereitgestellt
