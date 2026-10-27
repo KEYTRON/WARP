@@ -199,7 +199,7 @@ warp --root build/disk --platform k1k-x86_64 install lab/k1k-hello
 
 `--root DIR` (or `WARP_ROOT`) moves the store, the program directory and the system links under
 `DIR`; `--platform <os>-<arch>` (or `WARP_PLATFORM`) takes the builds of that platform from the
-index. A staged install never announces itself to a tracker. A staged root is not relocatable.
+index. A staged install never announces itself to a tracker, and `WARP_NO_P2P=1` skips the peer lookup (a build against its own repository). A staged root is not relocatable.
 
 For `k1k-*` a package says which services it carries:
 

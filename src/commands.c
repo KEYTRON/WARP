@@ -16,7 +16,7 @@
  * bytes hash to entry->sha256. */
 static int fetch_archive(const warp_pkg_entry_t *entry, const warp_repo_t *repo,
                          const char *peer_list_url, const char *tmp_path) {
-    if (peer_list_url && peer_list_url[0]) {
+    if (peer_list_url && peer_list_url[0] && !getenv("WARP_NO_P2P")) {   /* WARP_NO_P2P: a build against its own repository */
         warp_peer_list_t peers;
         if (p2p_load_peers(&peers, peer_list_url) == WARP_OK && peers.count > 0) {
             warp_info("Found %d peer(s) — trying P2P download...", peers.count);

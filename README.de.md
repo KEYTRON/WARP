@@ -203,7 +203,7 @@ warp --root build/disk --platform k1k-x86_64 install lab/k1k-hello
 
 `--root DIR` (oder `WARP_ROOT`) verlegt Store, Programmverzeichnis und Systemlinks unter `DIR`;
 `--platform <os>-<arch>` (oder `WARP_PLATFORM`) nimmt die Builds dieser Plattform aus dem Index.
-Eine solche Installation meldet sich nie bei einem Tracker. Ein bereitgestelltes Root ist nicht
+Eine solche Installation meldet sich nie bei einem Tracker, und `WARP_NO_P2P=1` überspringt die Peer-Suche (Build gegen ein eigenes Repository). Ein bereitgestelltes Root ist nicht
 verschiebbar.
 
 Ein Paket für `k1k-*` nennt seine Dienste:
