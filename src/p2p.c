@@ -18,7 +18,7 @@
 #include <curl/curl.h>
 #include "warp.h"
 
-char g_volunteer_dir[512] = WARP_STORE_DIR "/volunteer";
+char g_volunteer_dir[512] = "";   /* set from the seed config; empty = <store>/volunteer */
 
 /* ══════════════════════════════════════════════════════════════
  *  Size parser  "10G" / "500M" / "50K" → bytes
@@ -89,7 +89,7 @@ int seed_config_load(warp_seed_config_t *cfg) {
     if (cfg->cheap_sd) {
         strncpy(g_volunteer_dir, WARP_TMP_DIR "/warp-volunteer", sizeof(g_volunteer_dir) - 1);
     } else {
-        strncpy(g_volunteer_dir, WARP_STORE_DIR "/volunteer", sizeof(g_volunteer_dir) - 1);
+        snprintf(g_volunteer_dir, sizeof(g_volunteer_dir), "%s/volunteer", warp_store());
     }
 
     /* Reset monthly counter if calendar month rolled over */
@@ -137,7 +137,7 @@ int seed_config_save(const warp_seed_config_t *cfg) {
         cfg->stats_consent, cfg->consent_asked, cfg->consent_schema, cfg->node_id);
 
     /* tmp + rename: a crash must not leave half a config (it holds the counters) */
-    char tmp[sizeof(WARP_SEED_CONF) + 8];
+    char tmp[560];
     snprintf(tmp, sizeof(tmp), "%s.tmp", WARP_SEED_CONF);
     FILE *f = fopen(tmp, "w");
     if (!f) return WARP_ERR_IO;
@@ -367,7 +367,7 @@ int p2p_download(const char *pkg_name, const char *sha256_expected,
    Caller provides a pre-allocated buffer; returns number of packages added. */
 static int build_announce_packages(char *buf, size_t bufsz) {
     /* Walk store to collect all installed packages with their sha256 */
-    DIR *d = opendir(WARP_STORE_DIR "/store");
+    DIR *d = opendir(warp_store_at("/store"));
     if (!d) return 0;
 
     size_t pos = 0;
@@ -380,9 +380,9 @@ static int build_announce_packages(char *buf, size_t bufsz) {
 
         char sha_file[512], manifest_file[512];
         snprintf(sha_file,      sizeof(sha_file),
-                 WARP_STORE_DIR "/store/%s/sha256", ent->d_name);
+                 "%s/store/%s/sha256", warp_store(), ent->d_name);
         snprintf(manifest_file, sizeof(manifest_file),
-                 WARP_STORE_DIR "/store/%s/manifest.json", ent->d_name);
+                 "%s/store/%s/manifest.json", warp_store(), ent->d_name);
 
         size_t len;
         char *sha = read_file(sha_file, &len);
@@ -501,7 +501,7 @@ int p2p_announce(const char *announce_url, const char *pkg_name,
 /* Find package.warp in store by full sha256 — store only.
    Returns malloc'd path (caller frees) or NULL. */
 static char *store_find_warp_by_sha256(const char *sha256) {
-    DIR *d = opendir(WARP_STORE_DIR "/store");
+    DIR *d = opendir(warp_store_at("/store"));
     if (!d) return NULL;
 
     struct dirent *ent;
@@ -512,7 +512,7 @@ static char *store_find_warp_by_sha256(const char *sha256) {
 
         char sha_file[512];
         snprintf(sha_file, sizeof(sha_file),
-                 WARP_STORE_DIR "/store/%s/sha256", ent->d_name);
+                 "%s/store/%s/sha256", warp_store(), ent->d_name);
 
         size_t len;
         char *stored = read_file(sha_file, &len);
@@ -525,7 +525,7 @@ static char *store_find_warp_by_sha256(const char *sha256) {
         if (strcmp(stored, sha256) == 0) {
             char path[512];
             snprintf(path, sizeof(path),
-                     WARP_STORE_DIR "/store/%s/package.warp", ent->d_name);
+                     "%s/store/%s/package.warp", warp_store(), ent->d_name);
             if (path_exists(path)) {
                 result = strdup(path);
                 free(stored);
@@ -548,7 +548,7 @@ static char *find_warp_by_sha256(const char *sha256) {
 
 /* Build JSON list of all seedable packages (store + volunteer cache) */
 static char *build_pkg_list_json(void) {
-    DIR *d = opendir(WARP_STORE_DIR "/store");
+    DIR *d = opendir(warp_store_at("/store"));
     if (!d) return strdup("{\"packages\":[]}");
 
     /* Estimate buffer: ~200 bytes per package */
@@ -565,11 +565,11 @@ static char *build_pkg_list_json(void) {
 
         char sha_file[512], warp_file[512], manifest_file[512];
         snprintf(sha_file,      sizeof(sha_file),
-                 WARP_STORE_DIR "/store/%s/sha256",       ent->d_name);
+                 "%s/store/%s/sha256", warp_store(),       ent->d_name);
         snprintf(warp_file,     sizeof(warp_file),
-                 WARP_STORE_DIR "/store/%s/package.warp", ent->d_name);
+                 "%s/store/%s/package.warp", warp_store(), ent->d_name);
         snprintf(manifest_file, sizeof(manifest_file),
-                 WARP_STORE_DIR "/store/%s/manifest.json", ent->d_name);
+                 "%s/store/%s/manifest.json", warp_store(), ent->d_name);
 
         if (!path_exists(warp_file)) continue;
 

@@ -64,17 +64,16 @@ int copy_file(const char *src, const char *dst) {
 }
 
 /* ── store directories ───────────────────────────────────────── */
-#define STORE_PATH(buf, ...) snprintf(buf, sizeof(buf), WARP_STORE_DIR "/" __VA_ARGS__)
 
 int store_init(void) {
     const char *dirs[] = {
-        WARP_STORE_DIR,
-        WARP_STORE_DIR "/store",
-        WARP_STORE_DIR "/active",
-        WARP_STORE_DIR "/prev",
-        WARP_STORE_DIR "/history",
-        WARP_STORE_DIR "/pins",
-        WARP_BIN_DIR,
+        warp_store(),
+        warp_store_at("/store"),
+        warp_store_at("/active"),
+        warp_store_at("/prev"),
+        warp_store_at("/history"),
+        warp_store_at("/pins"),
+        warp_bin(),
         NULL
     };
     for (int i = 0; dirs[i]; i++) {
@@ -82,7 +81,7 @@ int store_init(void) {
             warp_err("Cannot create %s: %s", dirs[i], strerror(errno));
 #if defined(__APPLE__)
             if (errno == EACCES || errno == EPERM)
-                warp_err("Make the prefix yours once:  sudo mkdir -p %s && sudo chown \"$USER\" %s", WARP_STORE_DIR, WARP_STORE_DIR);
+                warp_err("Make the prefix yours once:  sudo mkdir -p %s && sudo chown \"$USER\" %s", warp_store(), warp_store());
 #endif
             return WARP_ERR_IO;
         }
@@ -98,7 +97,7 @@ int store_add(const warp_manifest_t *m, const char *warp_path, const char *sha25
 
     char store_pkg[512];
     snprintf(store_pkg, sizeof(store_pkg),
-             WARP_STORE_DIR "/store/%s-%s", m->name, hash12);
+             "%s/store/%s-%s", warp_store(), m->name, hash12);
 
     if (path_exists(store_pkg)) {
         warp_info("Already in store: %s-%s", m->name, hash12);
@@ -160,7 +159,7 @@ static int active_hash(const char *name, char hash12[13]);
 int store_history(const char *name, char (*out)[13], int max) {
     if (!store_name_ok(name)) return 0;
     char path[512];
-    snprintf(path, sizeof(path), WARP_STORE_DIR "/history/%s", name);
+    snprintf(path, sizeof(path), "%s/history/%s", warp_store(), name);
     FILE *f = fopen(path, "r");
     if (!f) return 0;
     char line[64];
@@ -178,7 +177,7 @@ int store_history(const char *name, char (*out)[13], int max) {
 
 static void hist_write(const char *name, char (*hs)[13], int n) {
     char path[512];
-    snprintf(path, sizeof(path), WARP_STORE_DIR "/history/%s", name);
+    snprintf(path, sizeof(path), "%s/history/%s", warp_store(), name);
     FILE *f = fopen(path, "w");
     if (!f) return;
     for (int i = 0; i < n; i++) fprintf(f, "%s\n", hs[i]);
@@ -197,7 +196,7 @@ static void hist_push(const char *name, const char *hash12) {
 int store_pin_get(const char *name, char *ver, size_t sz) {
     if (!store_name_ok(name)) return 0;
     char path[512];
-    snprintf(path, sizeof(path), WARP_STORE_DIR "/pins/%s", name);
+    snprintf(path, sizeof(path), "%s/pins/%s", warp_store(), name);
     size_t len;
     char *s = read_file(path, &len);
     if (!s) return 0;
@@ -210,7 +209,7 @@ int store_pin_get(const char *name, char *ver, size_t sz) {
 int store_pin_set(const char *name, const char *ver) {
     if (!store_name_ok(name)) return WARP_ERR_INVAL;
     char path[512];
-    snprintf(path, sizeof(path), WARP_STORE_DIR "/pins/%s", name);
+    snprintf(path, sizeof(path), "%s/pins/%s", warp_store(), name);
     FILE *f = fopen(path, "w");
     if (!f) return WARP_ERR_IO;
     fprintf(f, "%s\n", ver);
@@ -221,7 +220,7 @@ int store_pin_set(const char *name, const char *ver) {
 void store_pin_clear(const char *name) {
     if (!store_name_ok(name)) return;
     char path[512];
-    snprintf(path, sizeof(path), WARP_STORE_DIR "/pins/%s", name);
+    snprintf(path, sizeof(path), "%s/pins/%s", warp_store(), name);
     unlink(path);
 }
 
@@ -231,7 +230,7 @@ static int activate_impl(const char *name, const char *hash12, int push) {
     int have_old = active_hash(name, old_hash);
     char store_pkg[512];
     snprintf(store_pkg, sizeof(store_pkg),
-             WARP_STORE_DIR "/store/%s-%s", name, hash12);
+             "%s/store/%s-%s", warp_store(), name, hash12);
 
     if (!path_exists(store_pkg)) {
         warp_err("Store entry not found: %s-%s", name, hash12);
@@ -239,8 +238,8 @@ static int activate_impl(const char *name, const char *hash12, int push) {
     }
 
     char active_link[512], prev_link[512];
-    snprintf(active_link, sizeof(active_link), WARP_STORE_DIR "/active/%s", name);
-    snprintf(prev_link,   sizeof(prev_link),   WARP_STORE_DIR "/prev/%s",   name);
+    snprintf(active_link, sizeof(active_link), "%s/active/%s", warp_store(), name);
+    snprintf(prev_link,   sizeof(prev_link),   "%s/prev/%s", warp_store(),   name);
 
     /* System links follow the active version: the old ones go first. */
     unsigned trig = links_clear(name);
@@ -295,7 +294,7 @@ static int activate_impl(const char *name, const char *hash12, int push) {
 
                         char bin_src[768], bin_dst[512];
                         snprintf(bin_src, sizeof(bin_src), "%s/files/%s", store_pkg, bin);
-                        snprintf(bin_dst, sizeof(bin_dst), WARP_BIN_DIR "/%s", bname);
+                        snprintf(bin_dst, sizeof(bin_dst), "%s/%s", warp_bin(), bname);
 
                         unlink(bin_dst);
                         if (symlink(bin_src, bin_dst) == 0) {
@@ -323,7 +322,7 @@ int store_activate(const char *name, const char *hash12) {
 /* ── remove package ──────────────────────────────────────────── */
 int store_remove(const char *name) {
     char active_link[512];
-    snprintf(active_link, sizeof(active_link), WARP_STORE_DIR "/active/%s", name);
+    snprintf(active_link, sizeof(active_link), "%s/active/%s", warp_store(), name);
 
     if (!path_exists(active_link)) {
         warp_err("Not installed: %s", name);
@@ -337,13 +336,13 @@ int store_remove(const char *name) {
     ssize_t n = readlink(active_link, store_pkg, sizeof(store_pkg)-1);
     if (n > 0) {
         store_pkg[n] = '\0';
-        DIR *d = opendir(WARP_BIN_DIR);
+        DIR *d = opendir(warp_bin());
         if (d) {
             struct dirent *ent;
             while ((ent = readdir(d)) != NULL) {
                 if (ent->d_name[0] == '.') continue;
                 char lpath[512], target[512] = {0};
-                snprintf(lpath, sizeof(lpath), WARP_BIN_DIR "/%s", ent->d_name);
+                snprintf(lpath, sizeof(lpath), "%s/%s", warp_bin(), ent->d_name);
                 ssize_t m = readlink(lpath, target, sizeof(target)-1);
                 if (m > 0) {
                     target[m] = '\0';
@@ -357,8 +356,8 @@ int store_remove(const char *name) {
 
     unlink(active_link);
     char prev_link[512], hist[512];
-    snprintf(prev_link, sizeof(prev_link), WARP_STORE_DIR "/prev/%s", name);
-    snprintf(hist,      sizeof(hist),      WARP_STORE_DIR "/history/%s", name);
+    snprintf(prev_link, sizeof(prev_link), "%s/prev/%s", warp_store(), name);
+    snprintf(hist,      sizeof(hist),      "%s/history/%s", warp_store(), name);
     unlink(prev_link);
     unlink(hist);
     store_pin_clear(name);       /* the store entries stay until `warp gc` */
@@ -399,7 +398,7 @@ static void manifest_version(const char *store_dir, char *out, size_t sz) {
 
 static int active_hash(const char *name, char hash12[13]) {
     char link[512], target[512] = {0};
-    snprintf(link, sizeof(link), WARP_STORE_DIR "/active/%s", name);
+    snprintf(link, sizeof(link), "%s/active/%s", warp_store(), name);
     ssize_t n = readlink(link, target, sizeof(target) - 1);
     if (n <= 0) return 0;
     target[n] = '\0';
@@ -412,7 +411,7 @@ static int active_hash(const char *name, char hash12[13]) {
 int store_versions(const char *name, warp_version_t **out, int *count) {
     *out = NULL; *count = 0;
     if (!store_name_ok(name)) return WARP_ERR_INVAL;
-    DIR *d = opendir(WARP_STORE_DIR "/store");
+    DIR *d = opendir(warp_store_at("/store"));
     if (!d) return WARP_OK;
     int cap = 8;
     warp_version_t *v = malloc(cap * sizeof(*v));
@@ -426,7 +425,7 @@ int store_versions(const char *name, warp_version_t **out, int *count) {
         if (*count >= cap) { cap *= 2; v = realloc(v, cap * sizeof(*v)); }
         warp_version_t *e = &v[(*count)++];
         memcpy(e->hash12, h, 13);
-        snprintf(e->path, sizeof(e->path), WARP_STORE_DIR "/store/%s", ent->d_name);
+        snprintf(e->path, sizeof(e->path), "%s/store/%s", warp_store(), ent->d_name);
         manifest_version(e->path, e->version, sizeof(e->version));
         e->active = have_act && strcmp(act, h) == 0;
     }
@@ -481,7 +480,7 @@ int store_switch(const char *name, const char *spec) {
 static void pin_follow(const char *name) {
     char pv[WARP_MAX_NAME], h[13], ver[WARP_MAX_NAME], dir[512];
     if (!store_pin_get(name, pv, sizeof(pv)) || !active_hash(name, h)) return;
-    snprintf(dir, sizeof(dir), WARP_STORE_DIR "/store/%s-%s", name, h);
+    snprintf(dir, sizeof(dir), "%s/store/%s-%s", warp_store(), name, h);
     manifest_version(dir, ver, sizeof(ver));
     store_pin_set(name, ver);
 }
@@ -490,8 +489,8 @@ static void pin_follow(const char *name) {
 int store_rollback(const char *name) {
     if (!store_name_ok(name)) { warp_err("Bad package name: %s", name); return WARP_ERR_INVAL; }
     char active_link[512], prev_link[512];
-    snprintf(active_link, sizeof(active_link), WARP_STORE_DIR "/active/%s", name);
-    snprintf(prev_link,   sizeof(prev_link),   WARP_STORE_DIR "/prev/%s",   name);
+    snprintf(active_link, sizeof(active_link), "%s/active/%s", warp_store(), name);
+    snprintf(prev_link,   sizeof(prev_link),   "%s/prev/%s", warp_store(),   name);
 
     /* History first: every call goes one version further back. Entries whose
      * store directory is gone (warp gc) are skipped. */
@@ -501,7 +500,7 @@ int store_rollback(const char *name) {
     int have_cur = active_hash(name, cur);
     for (int i = 0; i < hn; i++) {
         char dir[512];
-        snprintf(dir, sizeof(dir), WARP_STORE_DIR "/store/%s-%s", name, hs[i]);
+        snprintf(dir, sizeof(dir), "%s/store/%s-%s", warp_store(), name, hs[i]);
         if (path_exists(dir)) memcpy(keep[kn++], hs[i], 13);
     }
     if (have_cur && kn >= 2 && strcmp(keep[kn - 1], cur) == 0) {
@@ -556,7 +555,7 @@ int store_rollback(const char *name) {
 /* ── list installed packages ─────────────────────────────────── */
 int store_list(warp_installed_t **out, int *count) {
     *out = NULL; *count = 0;
-    DIR *d = opendir(WARP_STORE_DIR "/active");
+    DIR *d = opendir(warp_store_at("/active"));
     if (!d) return WARP_OK;  /* no packages installed yet */
 
     int cap = 16;
@@ -567,7 +566,7 @@ int store_list(warp_installed_t **out, int *count) {
         if (ent->d_name[0] == '.') continue;
 
         char link[512], target[512] = {0};
-        snprintf(link, sizeof(link), WARP_STORE_DIR "/active/%s", ent->d_name);
+        snprintf(link, sizeof(link), "%s/active/%s", warp_store(), ent->d_name);
         ssize_t n = readlink(link, target, sizeof(target)-1);
         if (n <= 0) continue;
         target[n] = '\0';
@@ -608,7 +607,7 @@ int store_list(warp_installed_t **out, int *count) {
 
 int store_is_installed(const char *name, warp_installed_t *info) {
     char link[512];
-    snprintf(link, sizeof(link), WARP_STORE_DIR "/active/%s", name);
+    snprintf(link, sizeof(link), "%s/active/%s", warp_store(), name);
     if (!path_exists(link)) return 0;
     if (info) {
         strncpy(info->name, name, WARP_MAX_NAME-1);

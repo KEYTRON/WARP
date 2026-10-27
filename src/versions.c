@@ -207,7 +207,7 @@ static unsigned long long tree_bytes(const char *path) {
 
 /* Never follows symlinks, never leaves the store. */
 static int remove_tree(const char *path) {
-    if (strncmp(path, WARP_STORE_DIR "/store/", strlen(WARP_STORE_DIR "/store/")) != 0 || strstr(path, "..")) return -1;
+    if (strncmp(path, warp_store_at("/store/"), strlen(warp_store_at("/store/"))) != 0 || strstr(path, "..")) return -1;
     struct stat st;
     if (lstat(path, &st) != 0) return 0;
     if (S_ISDIR(st.st_mode)) {
@@ -238,7 +238,7 @@ int cmd_gc(int argc, char **argv) {
         } else { warp_err("Usage: warp gc [--keep N] [--dry-run]"); return 1; }
     }
 
-    DIR *d = opendir(WARP_STORE_DIR "/store");
+    DIR *d = opendir(warp_store_at("/store"));
     if (!d) { printf("  The store is empty.\n"); return 0; }
 
     unsigned long long freed = 0;
@@ -249,7 +249,7 @@ int cmd_gc(int argc, char **argv) {
         if (!store_split_dir(ent->d_name, name, sizeof(name), hash) || !store_name_ok(name)) continue;
 
         char dir[1024];
-        snprintf(dir, sizeof(dir), WARP_STORE_DIR "/store/%s", ent->d_name);
+        snprintf(dir, sizeof(dir), "%s/store/%s", warp_store(), ent->d_name);
 
         int keep_it = 0;
         warp_version_t *v; int n;

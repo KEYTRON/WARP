@@ -13,7 +13,7 @@
 
 void store_write_deps(const char *name, const char *hash12, const warp_pkg_entry_t *e) {
     char path[600];
-    snprintf(path, sizeof(path), WARP_STORE_DIR "/store/%s-%s/deps", name, hash12);
+    snprintf(path, sizeof(path), "%s/store/%s-%s/deps", warp_store(), name, hash12);
     if (e->dep_count == 0) { remove(path); return; }
     FILE *f = fopen(path, "w");
     if (!f) return;

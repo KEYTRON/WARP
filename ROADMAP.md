@@ -1,6 +1,6 @@
 # WARP roadmap
 
-Stage: 0.4.11
+Stage: 0.4.12
 
 Stages go in order: `[x]` is done, `[ ]` is planned. The current stage is the first unfinished one.
 
@@ -115,4 +115,4 @@ Any desktop environment (DDE first, then others) installed from a WARP repositor
 - [ ] zstd compression
 - [ ] Declarative system description (`system.yaml`)
 - [x] Building and running in Termux: `warp 0.4.5` builds with clang and reports `os: android`, `arch: aarch64`; `tests/crypto.sh` passes there
-- [ ] Delivering K1K services to `/SVC` as WARP packages
+- [x] K1OS/K1K as a native target: `--root` / `--platform`, platform `k1k-x86_64`, services staged into `/SVC` with a generated `MANIFEST.TXT` (0.4.12)

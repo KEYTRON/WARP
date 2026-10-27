@@ -90,7 +90,7 @@ static void hex_encode(const uint8_t *in, size_t len, char *out) {
 }
 
 int repos_save(const warp_repo_t *repos, int count) {
-    if (mkdirs(WARP_STORE_DIR, 0755) != WARP_OK) return WARP_ERR_IO;
+    if (mkdirs(warp_store(), 0755) != WARP_OK) return WARP_ERR_IO;
     FILE *f = fopen(WARP_REPOS_CONF, "w");
     if (!f) return WARP_ERR_IO;
     fprintf(f, "{\n  \"repos\": [\n");
@@ -116,5 +116,5 @@ const warp_repo_t *repos_find(const warp_repo_t *repos, int count, const char *n
 }
 
 void repo_cache_dir(const warp_repo_t *r, char *out, size_t cap) {
-    snprintf(out, cap, WARP_REPOS_DIR "/%s", r->name);
+    snprintf(out, cap, "%s/%s", WARP_REPOS_DIR, r->name);
 }

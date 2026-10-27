@@ -34,7 +34,7 @@
 #define LINKS_SUPPORTED 0
 #endif
 
-#define LINKS_DIR WARP_STORE_DIR "/links"
+#define LINKS_DIR warp_store_at("/links")
 #define LINKS_MAX 200000      /* a desktop links every file of the package: icons, translations */
 
 static const char *const allowed[] = {
@@ -63,11 +63,27 @@ static int has_dotdot(const char *p) {
     return 0;
 }
 
+/* A K1K disk is a FAT volume: the services the kernel starts live in /SVC, and nothing else of a
+ * Linux file system exists there. Names are FAT 8.3 (K1K's fs service reads short names only). */
+static const char *const allowed_k1k[] = { "/SVC/", NULL };
+
+static int fat83(const char *name) {
+    const char *dot = strchr(name, '.');
+    size_t base = dot ? (size_t)(dot - name) : strlen(name), ext = dot ? strlen(dot + 1) : 0;
+    if (base == 0 || base > 8 || ext > 3 || (dot && strchr(dot + 1, '.'))) return 0;
+    for (const char *p = name; *p; p++)
+        if (!((*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '_' || *p == '.')) return 0;
+    return 1;
+}
+
 static int target_allowed(const char *to) {
     if (to[0] != '/' || has_dotdot(to) || strstr(to, "//")) return 0;
-    for (int i = 0; allowed[i]; i++) {
-        size_t n = strlen(allowed[i]);
-        if (strncmp(to, allowed[i], n) == 0 && to[n]) return 1;
+    int k1k = strcmp(warp_target_os(), "k1k") == 0;
+    const char *const *list = k1k ? allowed_k1k : allowed;
+    for (int i = 0; list[i]; i++) {
+        size_t n = strlen(list[i]);
+        if (strncmp(to, list[i], n) != 0 || !to[n]) continue;
+        return !k1k || (!strchr(to + n, '/') && fat83(to + n));
     }
     return 0;
 }
@@ -87,6 +103,38 @@ static int resolve_link(const json_t *item, char *from, size_t fsz, char *to, si
     return from[0] && from[0] != '/' && !has_dotdot(from) && to[0];
 }
 
+/* K1K starts what /SVC/MANIFEST.TXT lists ("name image [cap,cap]"), so on a K1K target the manifest
+ * is written from the packages' `k1k_service` entries: {"name": "hello", "image": "HELLO.ELF",
+ * "caps": "fs"}. `extra` is a package being installed (not yet listed as active), `skip` one being removed. */
+static json_t *load_manifest(const char *store_pkg);
+
+static void k1k_manifest_write(const char *extra_pkg, const char *skip_name) {
+    if (strcmp(warp_target_os(), "k1k") != 0) return;
+    char path[1200];
+    snprintf(path, sizeof(path), "%s/SVC", warp_sysroot());
+    mkdirs(path, 0755);
+    snprintf(path, sizeof(path), "%s/SVC/MANIFEST.TXT", warp_sysroot());
+    FILE *out = fopen(path, "w");
+    if (!out) { warp_err("Cannot write %s: %s", path, strerror(errno)); return; }
+    fprintf(out, "# K1K service manifest: name image [capabilities]; written by warp\n");
+    warp_installed_t *list = NULL; int count = 0;
+    store_list(&list, &count);
+    for (int i = -1; i < count; i++) {
+        const char *dir = i < 0 ? extra_pkg : list[i].store_path;
+        if (!dir || (i >= 0 && skip_name && strcmp(list[i].name, skip_name) == 0)) continue;
+        if (i >= 0 && extra_pkg && strstr(extra_pkg, list[i].store_path)) continue;
+        json_t *jm = load_manifest(dir);
+        json_t *js = jm ? json_get(jm, "k1k_service") : NULL;
+        if (js && js->type == JSON_OBJECT) {
+            const char *name = json_str(js, "name", ""), *image = json_str(js, "image", ""), *caps = json_str(js, "caps", "");
+            if (*name && *image) fprintf(out, "%s %s%s%s\n", name, image, *caps ? " " : "", caps);
+        }
+        if (jm) json_free(jm);
+    }
+    if (list) store_free_list(list, count);
+    fclose(out);
+}
+
 /* Which package's store entry a link points into, or "" when it is not WARP's. */
 static void link_owner(const char *path, char *owner, size_t sz) {
     owner[0] = '\0';
@@ -94,7 +142,8 @@ static void link_owner(const char *path, char *owner, size_t sz) {
     ssize_t n = readlink(path, target, sizeof(target) - 1);
     if (n <= 0) return;
     target[n] = '\0';
-    const char *pre = WARP_STORE_DIR "/store/";
+    char pre[600];
+    snprintf(pre, sizeof(pre), "%s/store/", warp_store());
     size_t pl = strlen(pre);
     if (strncmp(target, pre, pl) != 0) return;
     char dir[WARP_MAX_NAME + 16];
@@ -133,10 +182,10 @@ static unsigned trigger_mask(const json_t *jm) {
 }
 
 /* Remove the recorded links of the active version of `name`; returns its triggers. */
-unsigned links_clear(const char *name) {
+static unsigned links_clear_impl(const char *name) {
     if (!store_name_ok(name)) return 0;
     char active[512], store_pkg[512] = {0};
-    snprintf(active, sizeof(active), WARP_STORE_DIR "/active/%s", name);
+    snprintf(active, sizeof(active), "%s/active/%s", warp_store(), name);
     ssize_t n = readlink(active, store_pkg, sizeof(store_pkg) - 1);
     unsigned mask = 0;
     if (n > 0) {
@@ -146,7 +195,7 @@ unsigned links_clear(const char *name) {
     }
 
     char rec[512];
-    snprintf(rec, sizeof(rec), LINKS_DIR "/%s", name);
+    snprintf(rec, sizeof(rec), "%s/%s", LINKS_DIR, name);
     FILE *f = fopen(rec, "r");
     if (!f) return mask;
     char line[1024];
@@ -154,7 +203,7 @@ unsigned links_clear(const char *name) {
         line[strcspn(line, "\r\n")] = '\0';
         if (!line[0]) continue;
         char path[1200], owner[WARP_MAX_NAME];
-        snprintf(path, sizeof(path), WARP_SYSROOT "%s", line);
+        snprintf(path, sizeof(path), "%s%s", warp_sysroot(), line);
         link_owner(path, owner, sizeof(owner));
         if (strcmp(owner, name) == 0) unlink(path);   /* replaced by someone else since: not ours to touch */
     }
@@ -165,7 +214,7 @@ unsigned links_clear(const char *name) {
 
 /* Link the files of `store_pkg` listed in its manifest; returns its triggers.
  * *failed counts the links that could not be made. */
-unsigned links_apply(const char *name, const char *store_pkg, int *failed) {
+static unsigned links_apply_impl(const char *name, const char *store_pkg, int *failed) {
     *failed = 0;
     json_t *jm = load_manifest(store_pkg);
     if (!jm) return 0;
@@ -180,7 +229,7 @@ unsigned links_apply(const char *name, const char *store_pkg, int *failed) {
     if (mkdirs(LINKS_DIR, 0755) != WARP_OK) { json_free(jm); *failed = 1; return mask; }
 
     char rec[512];
-    snprintf(rec, sizeof(rec), LINKS_DIR "/%s", name);
+    snprintf(rec, sizeof(rec), "%s/%s", LINKS_DIR, name);
     FILE *out = fopen(rec, "a");
     if (!out) { warp_err("Cannot write %s: %s", rec, strerror(errno)); json_free(jm); *failed = 1; return mask; }
 
@@ -195,7 +244,7 @@ unsigned links_apply(const char *name, const char *store_pkg, int *failed) {
         }
         char src[1200], dst[1200];
         snprintf(src, sizeof(src), "%s/files/%s", store_pkg, from);
-        snprintf(dst, sizeof(dst), WARP_SYSROOT "%s", to);
+        snprintf(dst, sizeof(dst), "%s%s", warp_sysroot(), to);
         struct stat st;
         if (lstat(src, &st) != 0) {
             warp_err("%s: %s is not in the package", name, from);
@@ -229,9 +278,21 @@ unsigned links_apply(const char *name, const char *store_pkg, int *failed) {
     return mask;
 }
 
+unsigned links_clear(const char *name) {
+    unsigned mask = links_clear_impl(name);
+    k1k_manifest_write(NULL, name);
+    return mask;
+}
+
+unsigned links_apply(const char *name, const char *store_pkg, int *failed) {
+    unsigned mask = links_apply_impl(name, store_pkg, failed);
+    k1k_manifest_write(store_pkg, name);
+    return mask;
+}
+
 void links_run_triggers(unsigned mask) {
     if (!mask) return;
-    int skip = WARP_SYSROOT[0] || getenv("WARP_NO_TRIGGERS");
+    int skip = warp_sysroot()[0] || getenv("WARP_NO_TRIGGERS");
     for (int k = 0; k < TRIGGER_COUNT; k++) {
         if (!(mask & (1u << k))) continue;
         if (skip) { warp_info("Trigger %s skipped", triggers[k].name); continue; }
@@ -251,7 +312,7 @@ int cmd_links(int argc, char **argv) {
     for (int i = 0; i < count; i++) {
         if (argc > 0 && strcmp(argv[0], list[i].name) != 0) continue;
         char rec[512];
-        snprintf(rec, sizeof(rec), LINKS_DIR "/%s", list[i].name);
+        snprintf(rec, sizeof(rec), "%s/%s", LINKS_DIR, list[i].name);
         FILE *f = fopen(rec, "r");
         if (!f) continue;
         printf("\n  " WARP_BOLD "%s" WARP_RESET " %s\n", list[i].name, list[i].version);
@@ -260,7 +321,7 @@ int cmd_links(int argc, char **argv) {
             line[strcspn(line, "\r\n")] = '\0';
             if (!line[0]) continue;
             char path[1200], owner[WARP_MAX_NAME];
-            snprintf(path, sizeof(path), WARP_SYSROOT "%s", line);
+            snprintf(path, sizeof(path), "%s%s", warp_sysroot(), line);
             link_owner(path, owner, sizeof(owner));
             printf("    %s%s\n", line, strcmp(owner, list[i].name) == 0 ? "" : "  " WARP_YELLOW "(missing)" WARP_RESET);
             shown++;

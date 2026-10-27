@@ -82,8 +82,17 @@ const char *warp_libc(void) {
 int warp_platform_candidates(const char **out, int max) {
     static char buf[4][48];
     int n = 0;
+    const char *os = warp_target_os();
+    if (!warp_target_is_host()) {
+        /* Another system: its C library is not ours to read. K1K has none, and a build for the
+         * platform itself or a `-static` one is all it can take. */
+#define ADD(...) do { if (n < max && n < 4) { snprintf(buf[n], sizeof(buf[n]), __VA_ARGS__); out[n] = buf[n]; n++; } } while (0)
+        ADD("%s-%s", os, warp_target_arch());
+        ADD("%s-%s-static", os, warp_target_arch());
+#undef ADD
+        return n;
+    }
     const char *libc = warp_libc();
-    const char *os = WARP_OS;
 #define ADD(...) do { if (n < max && n < 4) { snprintf(buf[n], sizeof(buf[n]), __VA_ARGS__); out[n] = buf[n]; n++; } } while (0)
     if (strcmp(libc, "musl") == 0) {
         ADD("%s-%s-musl", os, WARP_ARCH);
@@ -102,5 +111,5 @@ int warp_platform_candidates(const char **out, int max) {
 
 const char *warp_platform(void) {
     const char *c[4];
-    return warp_platform_candidates(c, 4) > 0 ? c[0] : WARP_PLATFORM;
+    return warp_platform_candidates(c, 4) > 0 ? c[0] : WARP_OS "-" WARP_ARCH;
 }

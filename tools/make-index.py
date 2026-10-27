@@ -31,7 +31,7 @@ from datetime import date
 from pathlib import Path
 
 NAME_RE = re.compile(r"^(?P<name>[a-z0-9_+.-]+?)-(?P<version>\d[^-]*)-(?P<arch>[a-z0-9_]+)\.warp$")
-OSES = ("android", "macos", "freebsd", "openbsd", "netbsd", "windows")
+OSES = ("k1k", "android", "macos", "freebsd", "openbsd", "netbsd", "windows")
 LEGACY = "linux-x86_64"
 
 

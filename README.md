@@ -185,6 +185,34 @@ gettext does (`WARP_LANG`, then the locale, where `C` means English, then
 `LANGUAGE`). `tools/make-index.py` reads the translations from a
 `descriptions.json` in the repository directory.
 
+## K1OS and K1K: a target of its own
+
+K1OS is WARP's home system, and K1K is its kernel. A K1K disk is a FAT volume whose `/SVC`
+holds the ring-3 services the kernel starts, listed in `/SVC/MANIFEST.TXT`. WARP does not run
+on K1K yet (there is no C library there), so the services are staged from a host that does:
+
+```bash
+warp --root build/disk --platform k1k-x86_64 install lab/k1k-hello
+# build/disk/SVC/HELLO.ELF       the image (a link into the store, copy it with mcopy)
+# build/disk/SVC/MANIFEST.TXT    "hello HELLO.ELF fs", written from the package
+```
+
+`--root DIR` (or `WARP_ROOT`) moves the store, the program directory and the system links under
+`DIR`; `--platform <os>-<arch>` (or `WARP_PLATFORM`) takes the builds of that platform from the
+index. A staged install never announces itself to a tracker. A staged root is not relocatable.
+
+For `k1k-*` a package says which services it carries:
+
+```json
+"install_links": [{"from": "SVC/HELLO.ELF", "to": "/SVC/HELLO.ELF"}],
+"k1k_service": {"name": "hello", "image": "HELLO.ELF", "caps": "fs"}
+```
+
+Links on a K1K target may only go to `/SVC/`, with FAT 8.3 names (`HELLO.ELF`). WARP rewrites
+`MANIFEST.TXT` from the `k1k_service` entries of the installed packages on every install and
+remove. Archives are `name-version-k1k_x86_64.warp`. A build of WARP made for K1K itself
+(`-D__k1k__`) reports `os: k1k`.
+
 ## Repositories
 
 The built-in repository `k1os` (mirrors on GitHub, GitLab and GitVerse, key
@@ -416,6 +444,7 @@ sh tests/crypto.sh              # SHA-256 and Ed25519: RFC/NIST vectors, forgeri
 sh tests/versions.sh              # versions side by side: install any, switch, pin, rollback chain, run, gc
 sh tests/links-deps.sh            # system links (refusals, conflicts, upgrade/rollback/remove) and dependency resolution
 sh tests/multi-platform.sh        # one build per OS/CPU in the index; the client takes only its own
+sh tests/k1k-target.sh            # K1K as a target: --root/--platform, DIR/SVC and MANIFEST.TXT, refusals, remove
 sh tests/node-stats.sh             # node: volunteer limits, one process, counters, opt-in statistics
 sh tests/e2e-delta-upgrade.sh      # custom repo over HTTP, install → upgrade via delta → rollback, in the K1OS container
 ```

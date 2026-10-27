@@ -6,10 +6,12 @@
 #include <sys/types.h>
 
 /* ── version & paths ─────────────────────────────────────────── */
-#define WARP_VERSION     "0.4.11"
+#define WARP_VERSION     "0.4.12"
 /* Where things live. Linux: /var/lib/warp and /usr/local/bin (root). macOS: a prefix owned by the
  * user, /opt/warp (like Homebrew's), so nothing is installed by root afterwards and `warp shellenv`
  * puts /opt/warp/bin on the PATH. Termux: under $PREFIX, there is no root and no /tmp there. */
+/* WARP_STORE_DIR, WARP_BIN_DIR and WARP_SYSROOT are the defaults of a build (the tests override them
+ * with -D); at run time `--root DIR` (or WARP_ROOT) moves everything under DIR, see target.c. */
 #if defined(__ANDROID__)
 #define WARP_PREFIX      "/data/data/com.termux/files/usr"
 #ifndef WARP_STORE_DIR
@@ -36,10 +38,22 @@
 #endif
 #define WARP_TMP_DIR     "/tmp"
 #endif
-/* Root of the system links (install_links); the tests point it at a scratch directory. */
 #ifndef WARP_SYSROOT
 #define WARP_SYSROOT     ""
 #endif
+/* The target: where `install` puts things (a root directory, "" = this system) and which platform
+ * it takes builds for. By default both are this machine; `warp --root DIR --platform k1k-x86_64
+ * install ...` stages packages for another system, K1K services for the /SVC of a disk image. */
+extern char g_warp_root[512];
+const char *warp_sysroot(void);                /* where system links and /SVC go: --root, else the build default */
+const char *warp_store(void);                  /* <root><store dir> */
+const char *warp_bin(void);                    /* <root><bin dir> */
+const char *warp_store_at(const char *suffix); /* <root><store dir><suffix>, valid until 8 more calls */
+int         warp_set_root(const char *dir);
+int         warp_set_platform(const char *platform);   /* "<os>-<arch>"; NULL clears */
+const char *warp_target_os(void);
+const char *warp_target_arch(void);
+int         warp_target_is_host(void);
 #define WARP_INDEX_MIRRORS 3
 extern const char *g_warp_mirrors[WARP_INDEX_MIRRORS];
 /* The machine this binary was built for. WARP installs prebuilt packages only:
@@ -60,6 +74,8 @@ extern const char *g_warp_mirrors[WARP_INDEX_MIRRORS];
 #ifndef WARP_OS
 #  if defined(__ANDROID__)
 #    define WARP_OS      "android"       /* Termux: bionic, not glibc */
+#  elif defined(__k1k__)
+#    define WARP_OS      "k1k"           /* warp running on K1K itself */
 #  elif defined(__linux__)
 #    define WARP_OS      "linux"
 #  elif defined(__APPLE__)
@@ -79,7 +95,7 @@ const char *warp_ui_lang(void);        /* "ru", "de", ... from WARP_LANG/LANGUAG
 
 /* ── P2P / seeding ───────────────────────────────────────────── */
 #define WARP_PEER_PORT       7777
-#define WARP_PEERS_CACHE     WARP_STORE_DIR "/peers.json"
+#define WARP_PEERS_CACHE     warp_store_at("/peers.json")
 #define WARP_PEERS_MAX       64
 #define WARP_PEER_URL_MAX    256
 #define WARP_PEERS_MAX_AGE   300   /* peer list TTL: 5 minutes */
@@ -128,8 +144,8 @@ typedef struct {
 
 /* ── repositories ────────────────────────────────────────────── */
 #define WARP_DEFAULT_REPO "k1os"
-#define WARP_REPOS_CONF   WARP_STORE_DIR "/repos.json"
-#define WARP_REPOS_DIR    WARP_STORE_DIR "/repos"
+#define WARP_REPOS_CONF   warp_store_at("/repos.json")
+#define WARP_REPOS_DIR    warp_store_at("/repos")
 #define WARP_MAX_REPOS    16
 #define WARP_MAX_MIRRORS  4
 #define WARP_REPO_NAME    64
@@ -204,8 +220,8 @@ typedef struct {
 } warp_peer_list_t;
 
 /* ── volunteer seeding config ────────────────────────────────── */
-#define WARP_SEED_CONF     WARP_STORE_DIR "/seed.conf"
-#define WARP_VOLUNTEER_DIR WARP_STORE_DIR "/volunteer"
+#define WARP_SEED_CONF     warp_store_at("/seed.conf")
+#define WARP_VOLUNTEER_DIR warp_store_at("/volunteer")
 
 typedef struct {
     size_t quota_bytes;          /* disk limit for volunteer cache          */
@@ -232,8 +248,8 @@ typedef struct {
  * one does not cover the new fields until the user has seen and accepted them. */
 #define WARP_REPORT_SCHEMA   3
 #define WARP_RESERVE_DEFAULT ((size_t)1073741824)   /* keep 1 GiB free */
-#define WARP_NODE_PID        WARP_STORE_DIR "/node.pid"
-#define WARP_NET_STATS_CACHE WARP_STORE_DIR "/net-stats.json"
+#define WARP_NODE_PID        warp_store_at("/node.pid")
+#define WARP_NET_STATS_CACHE warp_store_at("/net-stats.json")
 
 extern char g_volunteer_dir[512];
 

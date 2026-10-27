@@ -385,7 +385,7 @@ void index_free(warp_index_t *idx) {
  * names that already exist), `<os>_<arch>` on any other OS. */
 const char *warp_archive_tag(void) {
     static char tag[64];
-    if (strcmp(WARP_OS, "linux") == 0) snprintf(tag, sizeof(tag), "%s", WARP_ARCH);
-    else                               snprintf(tag, sizeof(tag), "%s_%s", WARP_OS, WARP_ARCH);
+    if (strcmp(warp_target_os(), "linux") == 0) snprintf(tag, sizeof(tag), "%s", warp_target_arch());
+    else                                        snprintf(tag, sizeof(tag), "%s_%s", warp_target_os(), warp_target_arch());
     return tag;
 }

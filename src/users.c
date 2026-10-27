@@ -57,7 +57,7 @@ static int run_argv(char *const argv[]) {
     return WIFEXITED(st) ? WEXITSTATUS(st) : -1;
 }
 
-static int dry(void) { return WARP_SYSROOT[0] != '\0'; }
+static int dry(void) { return warp_sysroot()[0] != '\0'; }
 
 static int ensure_group(const char *pkg, const char *g) {
     if (!name_ok(g)) { warp_err("%s: bad group name '%s'", pkg, g); return 1; }

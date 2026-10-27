@@ -32,6 +32,9 @@ jobs:
       - name: Prebuilt packages per platform
         run: sh tests/multi-platform.sh
 
+      - name: K1OS/K1K as a target
+        run: sh tests/k1k-target.sh
+
       - name: Node, volunteer limits and opt-in statistics
         run: sh tests/node-stats.sh
       - name: Dead peers do not stall an install

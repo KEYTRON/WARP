@@ -193,6 +193,7 @@ static const char *repo_tracker(const warp_repo_t *repo) {
 }
 
 static void announce(const warp_pkg_entry_t *entry, const warp_repo_t *repo) {
+    if (g_warp_root[0] || !warp_target_is_host()) return;   /* a staged system is not a seeding node */
     const char *tracker = repo_tracker(repo);
     if (!tracker[0]) return;
     /* Tracker announce base should not include dashboard or peer-list paths. */

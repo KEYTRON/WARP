@@ -188,6 +188,35 @@ Eintrag kann neben der englischen `description` eine Map `descriptions` tragen
 `tools/make-index.py` liest die Übersetzungen aus einer `descriptions.json` im
 Repository-Verzeichnis.
 
+## K1OS und K1K: ein eigenes Ziel
+
+K1OS ist das Heimatsystem von WARP, K1K sein Kernel. Eine K1K-Platte ist ein FAT-Volume, dessen
+`/SVC` die vom Kernel gestarteten Ring-3-Dienste enthält; `/SVC/MANIFEST.TXT` listet sie auf. WARP
+läuft auf K1K noch nicht (dort gibt es keine libc), die Dienste werden daher auf einem Host
+bereitgestellt:
+
+```bash
+warp --root build/disk --platform k1k-x86_64 install lab/k1k-hello
+# build/disk/SVC/HELLO.ELF       das Abbild (ein Link in den Store, mit mcopy kopieren)
+# build/disk/SVC/MANIFEST.TXT    "hello HELLO.ELF fs", aus dem Paket geschrieben
+```
+
+`--root DIR` (oder `WARP_ROOT`) verlegt Store, Programmverzeichnis und Systemlinks unter `DIR`;
+`--platform <os>-<arch>` (oder `WARP_PLATFORM`) nimmt die Builds dieser Plattform aus dem Index.
+Eine solche Installation meldet sich nie bei einem Tracker. Ein bereitgestelltes Root ist nicht
+verschiebbar.
+
+Ein Paket für `k1k-*` nennt seine Dienste:
+
+```json
+"install_links": [{"from": "SVC/HELLO.ELF", "to": "/SVC/HELLO.ELF"}],
+"k1k_service": {"name": "hello", "image": "HELLO.ELF", "caps": "fs"}
+```
+
+Links für K1K sind nur nach `/SVC/` erlaubt, mit FAT-8.3-Namen (`HELLO.ELF`). WARP schreibt
+`MANIFEST.TXT` bei jeder Installation und Entfernung aus den `k1k_service`-Einträgen neu. Archive
+heißen `name-version-k1k_x86_64.warp`. Ein für K1K selbst gebautes WARP (`-D__k1k__`) meldet `os: k1k`.
+
 ## Repositorys
 
 Das eingebaute Repository `k1os` (Spiegel auf GitHub, GitLab und GitVerse, Schlüssel in

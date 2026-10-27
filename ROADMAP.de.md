@@ -1,6 +1,6 @@
 # WARP-Roadmap
 
-Stand: 0.4.11
+Stand: 0.4.12
 
 Auch auf [English](ROADMAP.md) und [Русский](ROADMAP.ru.md).
 
@@ -117,4 +117,4 @@ Jede Desktop-Umgebung (zuerst DDE, dann weitere) aus einem WARP-Repository insta
 - [ ] zstd-Kompression
 - [ ] Deklarative Systembeschreibung (`system.yaml`)
 - [ ] Bauen und Betrieb in Termux
-- [ ] K1K-Dienste als WARP-Pakete nach `/SVC` ausliefern
+- [x] K1OS/K1K als native Zielplattform: `--root` / `--platform`, Plattform `k1k-x86_64`, Dienste nach `/SVC` mit erzeugtem `MANIFEST.TXT` (0.4.12)

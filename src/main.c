@@ -73,8 +73,11 @@ static void print_help(void) {
         "    warp install nano\n"
         "    warp upgrade\n"
         "    warp repo add lab https://mirror.example/lab --pubkey <hex>\n\n"
-        "  Repositories: " WARP_REPOS_CONF " (default: k1os via GitHub, GitLab, GitVerse)\n"
-        "  Store: " WARP_STORE_DIR "   Programs: " WARP_BIN_DIR "\n\n"
+        "  Repositories: %s (default: k1os via GitHub, GitLab, GitVerse)\n"
+        "  Store: %s   Programs: %s\n\n"
+        "  Another system:  warp --root DIR --platform k1k-x86_64 install <pkg>\n"
+        "    stages packages for that platform under DIR (K1K services go to DIR/SVC)\n\n",
+        WARP_REPOS_CONF, warp_store(), warp_bin()
     );
     stats_print_help_line();
 }
@@ -122,14 +125,31 @@ int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     if (argc < 2) { print_help(); return 0; }
 
+    /* Where to install and for which platform; before the command, or from the environment. */
+    const char *root = getenv("WARP_ROOT"), *plat = getenv("WARP_PLATFORM");
+    while (argc > 2 && (strncmp(argv[1], "--root", 6) == 0 || strncmp(argv[1], "--platform", 10) == 0)) {
+        int is_root = strncmp(argv[1], "--root", 6) == 0;
+        const char *opt = argv[1], *eq = strchr(opt, '=');
+        const char *val = eq ? eq + 1 : (argc > 3 ? argv[2] : NULL);
+        int used = eq ? 1 : 2;
+        if (!val || (!eq && strcmp(opt, is_root ? "--root" : "--platform") != 0)) {
+            warp_err("%s needs a value", is_root ? "--root" : "--platform");
+            return 1;
+        }
+        if (is_root) root = val; else plat = val;
+        argc -= used; argv += used; argv[0] = argv[-used];
+    }
+    if (warp_set_platform(plat) != WARP_OK) { warp_err("Bad platform '%s' (expected <os>-<arch>, e.g. k1k-x86_64)", plat); return 1; }
+    if (warp_set_root(root) != WARP_OK) { warp_err("Bad root '%s'", root ? root : ""); return 1; }
+
     if (strcmp(argv[1], "archive-tag") == 0) {      /* for build scripts */
         printf("%s\n", warp_archive_tag());
         return 0;
     }
     if (strcmp(argv[1], "shellenv") == 0) {         /* eval "$(warp shellenv)" in the shell profile */
         const char *sh = argc > 2 ? argv[2] : getenv("SHELL");
-        if (sh && strstr(sh, "fish")) printf("fish_add_path %s\n", WARP_BIN_DIR);
-        else printf("export PATH=\"%s:$PATH\"\n", WARP_BIN_DIR);
+        if (sh && strstr(sh, "fish")) printf("fish_add_path %s\n", warp_bin());
+        else printf("export PATH=\"%s:$PATH\"\n", warp_bin());
         return 0;
     }
     if (strcmp(argv[1], "platform") == 0) {         /* for build scripts and bug reports */

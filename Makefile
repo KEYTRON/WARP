@@ -15,6 +15,7 @@ SRCS    = $(SRC_DIR)/main.c \
           $(SRC_DIR)/users.c \
           $(SRC_DIR)/index.c \
           $(SRC_DIR)/platform.c \
+          $(SRC_DIR)/target.c \
           $(SRC_DIR)/commands.c \
           $(SRC_DIR)/repo.c \
           $(SRC_DIR)/delta.c \
