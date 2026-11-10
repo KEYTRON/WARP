@@ -1,16 +1,14 @@
 name: WARP K1OS
 
+# Per-distro run for debugging K1OS on its own. The push trigger lives in
+# warp-distros.yml: GitHub keeps only one pending job per concurrency group,
+# so ten separate workflows sharing a group would cancel eight of them.
+#
+# Unlike the other distros there is no docker/Dockerfile.k1os: K1OS publishes
+# its own image (ghcr.io/keytron/k1os, built by K1OS k1os-image.yml) with
+# WARP inside. Smoke-test the binary built from this checkout in that image;
+# the full end-to-end in K1OS lives in warp-tests.yml.
 on:
-  push:
-    paths:
-      - "README.md"
-      - "README.ru.md"
-      - ".github/workflows/warp-k1os.yml"
-  pull_request:
-    paths:
-      - "README.md"
-      - "README.ru.md"
-      - ".github/workflows/warp-k1os.yml"
   workflow_dispatch:
 
 permissions:
@@ -21,9 +19,12 @@ jobs:
     runs-on: [self-hosted, k1lab, warp]
     steps:
       - uses: actions/checkout@v4
-      - name: Build image
-        run: docker build -f docker/Dockerfile.k1os -t warp:k1os .
-      - name: Smoke test
+      - name: Build
+        run: make -s clean all && ./warp --version
+      - name: Pull K1OS image
+        run: docker pull ghcr.io/keytron/k1os:latest
+      - name: Smoke test in K1OS
         run: |
-          docker run --rm warp:k1os --version
-          docker run --rm warp:k1os --help
+          docker run --rm -v "$PWD/warp:/usr/bin/warp:ro" \
+            ghcr.io/keytron/k1os:latest \
+            /bin/sh -lc 'warp --version && warp --help >/dev/null'
