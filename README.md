@@ -271,7 +271,9 @@ The built-in `k1os` index and archives live in the `packages` branch of
 
 1. `https://github.com/KEYTRON/K1OS/raw/packages`
 2. `https://gitlab.com/KEYTRON/K1OS/-/raw/packages`
-3. `https://gitverse.ru/keytron46/K1OS/raw/branch/packages`
+3. `https://gitverse.ru/keytron46/K1OS/raw/branch/packages` (checked
+   2026-11-10: not served anonymously — GitVerse answers 404 and its API
+   requires a token; the mirror is not working for now, see ROADMAP)
 
 ## Upgrades and delta updates
 

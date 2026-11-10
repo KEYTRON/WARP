@@ -7,6 +7,11 @@
 const char *g_warp_mirrors[WARP_INDEX_MIRRORS] = {
     "https://github.com/KEYTRON/K1OS/raw/packages",
     "https://gitlab.com/KEYTRON/K1OS/-/raw/packages",
+    /* Checked 2026-11-10: GitVerse serves no anonymous raw file (the web
+     * /raw/branch/... path 404s and api.gitverse.ru requires a token), so
+     * this fallback cannot deliver the index today. .warp payloads do
+     * download anonymously via git-lfs <repo>.git/info/lfs/objects/<sha256>;
+     * the entry stays for the day the index moves to a token-free endpoint. */
     "https://gitverse.ru/keytron46/K1OS/raw/branch/packages"
 };
 

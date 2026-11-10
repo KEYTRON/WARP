@@ -275,7 +275,10 @@ Index und Archive des eingebauten `k1os` liegen im Branch `packages` von
 
 1. `https://github.com/KEYTRON/K1OS/raw/packages`
 2. `https://gitlab.com/KEYTRON/K1OS/-/raw/packages`
-3. `https://gitverse.ru/keytron46/K1OS/raw/branch/packages`
+3. `https://gitverse.ru/keytron46/K1OS/raw/branch/packages` (geprüft
+   2026-11-10: anonym nicht erreichbar — GitVerse liefert 404 und verlangt
+   für die API ein Token; das Mirror ist vorerst nicht funktionsfähig, siehe
+   ROADMAP)
 
 ## Aktualisierungen und Delta-Updates
 

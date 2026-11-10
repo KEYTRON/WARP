@@ -272,7 +272,9 @@ tools/make-index.py <dir> --base-url https://mirror.example/lab --key repo.priv
 
 1. `https://github.com/KEYTRON/K1OS/raw/packages`
 2. `https://gitlab.com/KEYTRON/K1OS/-/raw/packages`
-3. `https://gitverse.ru/keytron46/K1OS/raw/branch/packages`
+3. `https://gitverse.ru/keytron46/K1OS/raw/branch/packages` (проверено
+   2026-11-10: анонимно не отдаётся — GitVerse отвечает 404, а его API
+   требует токен; зеркало пока нерабочее, см. ROADMAP)
 
 ## Обновления и дельта-обновления
 

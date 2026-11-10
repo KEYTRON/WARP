@@ -111,7 +111,7 @@ Any desktop environment (DDE first, then others) installed from a WARP repositor
 - [ ] Package licenses: read before installing (from the index) and after (from the installed package), e.g. `warp license <package>`
 - [ ] Optional package components (e.g. CUDA, ROCm, Vulkan backends): one package, the client installs only the ones matching the hardware, `--with` / `--without` to choose by hand
 - [ ] What's new in a version: release notes in the signed index, shown by `warp upgrade` and `warp info` before upgrading and by `warp changelog <package>` afterwards
-- [ ] Working K1OS index mirrors on GitLab and GitVerse
+- [ ] Working K1OS index mirror on GitVerse (checked 2026-11-10: GitVerse has no anonymous raw — the web `/raw/branch/...` path 404s and the public API requires a token even for public repos; `.warp` files themselves do download anonymously via git-lfs `<repo>.git/info/lfs/objects/<sha256>`). The GitLab mirror was checked the same day: works
 - [ ] zstd compression
 - [ ] Declarative system description (`system.yaml`)
 - [x] Building and running in Termux: `warp 0.4.5` builds with clang and reports `os: android`, `arch: aarch64`; `tests/crypto.sh` passes there
