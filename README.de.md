@@ -13,6 +13,8 @@ verwaltet unter `/var/lib/warp` einen versionierten lokalen Speicher mit soforti
 [Alle WARP-Workflow-Läufe ansehen](https://github.com/KEYTRON/WARP/actions) — jeder
 Workflow läuft auf dem selbst betriebenen Runner des K1-Labors.
 
+Entwicklungsnews und Commits: [WARP-Thema in der Telegram-Gruppe KEYTRON Community](https://t.me/KEYTRON_Prime_Community/403).
+
 ## Vertrauensmodell — „jeder ist ein Feind“
 
 WARP geht davon aus, dass jede Station im Netz feindlich ist, und vertraut genau

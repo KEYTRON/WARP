@@ -13,6 +13,8 @@ manages a versioned local store under `/var/lib/warp` with instant rollback.
 [View all WARP workflow runs](https://github.com/KEYTRON/WARP/actions) — every
 workflow runs on the self-hosted K1 lab runner.
 
+Development news and commits: [WARP topic in the KEYTRON Community Telegram group](https://t.me/KEYTRON_Prime_Community/403).
+
 ## Trust model — "everyone is an enemy"
 
 WARP assumes every network hop is hostile and trusts exactly one thing: an

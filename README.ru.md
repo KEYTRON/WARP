@@ -13,6 +13,8 @@ WARP — небольшой пакетный менеджер на C для K1OS
 [Все запуски workflow](https://github.com/KEYTRON/WARP/actions) — всё
 выполняется на self-hosted раннере лабы K1.
 
+Новости разработки и коммиты: [тема WARP в Telegram-группе KEYTRON Community](https://t.me/KEYTRON_Prime_Community/403).
+
 ## Модель доверия — «кругом одни враги»
 
 WARP считает враждебным каждый сетевой узел и доверяет ровно одной вещи:
